@@ -4,7 +4,7 @@ description: Set up and run an automated 4-step pipeline in the current git repo
 argument-hint: "[what to build]"
 ---
 
-Runner: `~/.claude/skills/setup-pipeline/pipeline.mjs` (Node). It launches one headless `claude -p` per step with a fixed model and a **tool allowlist that enforces the role** (planner can only write `.pipeline/plan.md`; reviewer can only write `.pipeline/review.md` and run read-only git; committer has no Edit/Write). Files in `.pipeline/` are the only memory between steps.
+Runner: `${CLAUDE_SKILL_DIR}/pipeline.mjs` (Node). It launches one headless `claude -p` per step with a fixed model and a **tool allowlist that enforces the role** (planner can only write `.pipeline/plan.md`; reviewer can only write `.pipeline/review.md` and run read-only git; committer has no Edit/Write). Files in `.pipeline/` are the only memory between steps.
 
 ## 1. Preflight (stop and tell the user if any fails)
 - `git rev-parse --show-toplevel` succeeds (else offer `git init`); work from that root.
@@ -53,7 +53,7 @@ Fill `skills` from the answers. `budgetUsd` is a per-step hard cap (real API spe
 
 ## 5. Run
 ```bash
-node "$HOME/.claude/skills/setup-pipeline/pipeline.mjs" .pipeline/config.json
+node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json
 ```
 Use `run_in_background: true` (takes minutes) and read the output when notified. Do not touch the repo while it runs. Handle the exit code:
 
@@ -68,4 +68,4 @@ Use `run_in_background: true` (takes minutes) and read the output when notified.
 - Never edit code, commit, or push yourself while running this skill; the pipeline owns those steps.
 - Never force-push and never target main/master. Report failures with their real output; do not claim success unless exit code 0.
 - Resume points: `--from build`, `--from review`, `--from commit` (state lives in `.pipeline/`).
-- Headless runs on Windows only expose the `PowerShell` tool (the runner maps `Bash` rules to it automatically); on macOS/Linux it uses `Bash`.
+- On Windows the runner allows both `Bash` and `PowerShell` rules (headless sessions may expose either); on macOS/Linux only `Bash`.

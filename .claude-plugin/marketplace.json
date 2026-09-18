@@ -1,0 +1,14 @@
+{
+  "name": "punssama",
+  "description": "Punssama's Claude Code plugins.",
+  "owner": {
+    "name": "Punssama"
+  },
+  "plugins": [
+    {
+      "name": "claude-pipeline",
+      "description": "Plan (Opus) -> Build (Sonnet) -> Review (Sonnet, read-only) -> Commit (Haiku) pipeline, run with /setup-pipeline.",
+      "source": "./"
+    }
+  ]
+}

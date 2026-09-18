@@ -15,8 +15,17 @@ const D = '.pipeline';
 const say = (m) => console.log(`[pipeline] ${m}`);
 const die = (m, code = 1) => { say(m); process.exit(code); };
 const git = (...a) => spawnSync('git', a, { encoding: 'utf8' });
-const SH = process.platform === 'win32' ? 'PowerShell' : 'Bash'; // headless -p on Windows only exposes PowerShell (verified)
-const sh = (x) => x.replaceAll('Bash', SH);
+const WIN = process.platform === 'win32';
+// Windows headless sessions may expose PowerShell instead of Bash: allow both rule forms there.
+const sh = (x) => !WIN ? x : x.split(',').flatMap((t) => t.startsWith('Bash') ? [t, t.replace('Bash', 'PowerShell')] : [t]).join(',');
+// Native installer gives claude(.exe); npm on Windows gives claude.cmd, which needs a shell.
+function claude(args, input) {
+  const o = { input, encoding: 'utf8', maxBuffer: 1 << 26 };
+  let r = spawnSync('claude', args, o);
+  if (r.error?.code === 'ENOENT' && WIN) r = spawnSync('claude.cmd', args.map((a) => `"${a}"`), { ...o, shell: true });
+  if (r.error) die(`cannot run claude: ${r.error.message}. Is Claude Code installed and on PATH?`);
+  return r;
+}
 
 function run(step, prompt, tools, allowed, disallowed = '') {
   const s = cfg.steps[step];
@@ -26,7 +35,7 @@ function run(step, prompt, tools, allowed, disallowed = '') {
   if (disallowed) args.push('--disallowedTools', sh(disallowed));
   say(`${step}: ${s.model} ...`);
   const t0 = Date.now();
-  const r = spawnSync('claude', args, { input: prompt + skills, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const r = claude(args, prompt + skills);
   fs.mkdirSync(`${D}/logs`, { recursive: true });
   fs.writeFileSync(`${D}/logs/${step}-${Date.now()}.log`, (r.stdout || '') + '\n--- stderr ---\n' + (r.stderr || ''));
   say(`${step}: exit ${r.status} in ${Math.round((Date.now() - t0) / 1000)}s`);
