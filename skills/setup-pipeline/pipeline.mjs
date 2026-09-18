@@ -29,10 +29,15 @@ function claude(args, input) {
 
 function run(step, prompt, tools, allowed, disallowed = '') {
   const s = cfg.steps[step];
-  const skills = s.skills?.length ? `\n\nUse these skills where they apply (invoke each with the Skill tool): ${s.skills.join(', ')}.` : '';
+  const skills = (s.skills?.length ? `\n\nUse these skills where they apply (invoke each with the Skill tool): ${s.skills.join(', ')}.` : '')
+    + (cfg.guidance ? `\n\nGuidance: ${cfg.guidance}` : '');
   const args = ['-p', '--model', s.model, '--tools', sh(tools), '--allowedTools', sh(allowed),
     '--max-budget-usd', String(s.budgetUsd ?? 3), '--no-session-persistence'];
   if (disallowed) args.push('--disallowedTools', sh(disallowed));
+  if (cfg.disablePlugins?.length) { // plugins the user opted out of: no hooks, no skills, no tokens
+    fs.writeFileSync(`${D}/settings.json`, JSON.stringify({ enabledPlugins: Object.fromEntries(cfg.disablePlugins.map((p) => [p, false])) }));
+    args.push('--settings', `${D}/settings.json`);
+  }
   say(`${step}: ${s.model} ...`);
   const t0 = Date.now();
   const r = claude(args, prompt + skills);
@@ -87,13 +92,15 @@ if (from === 'plan') {
   if (!ex.includes(`${D}/`)) fs.appendFileSync('.git/info/exclude', `\n${D}/\n`);
   if (git('status', '--porcelain').stdout.trim()) die('working tree not clean; commit or stash first');
   const cur = git('branch', '--show-current').stdout.trim();
-  fs.appendFileSync('.git/info/exclude', `\n${D}/\n`);
   const b = git('switch', '-c', cfg.branch);
   if (b.status !== 0) die(`cannot create branch ${cfg.branch}: ${b.stderr.trim()}`);
   say(`branch ${cfg.branch} (from ${cur})`);
   fs.mkdirSync(D, { recursive: true });
   run('plan',
-    `Task: ${cfg.task}
+    `${cfg.project ? `Project context:
+${cfg.project}
+
+` : ''}Task: ${cfg.task}
 
 Explore the repo, then write ${D}/plan.md — the ONLY file you may create. Sections: Goal, Non-goals, Assumptions, Tasks (each: files touched, acceptance criteria, how to verify), Test command${cfg.testCmd ? ` (use: ${cfg.testCmd})` : ''}.
 You are non-interactive: do not ask questions, record assumptions instead. Keep it short and self-contained: a different model will implement it without seeing this conversation.`,
