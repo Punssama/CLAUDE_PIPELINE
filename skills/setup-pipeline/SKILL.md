@@ -8,6 +8,8 @@ Runner: `${CLAUDE_SKILL_DIR}/pipeline.mjs` (Node). One headless `claude -p` per 
 
 Plugin files are English; talk to the user in the language they write in. Keep each message short.
 
+**Asking questions.** Use `AskUserQuestion` with small, plain inputs: 1-4 questions per call, 2-4 options per question (never add an "Other" option: the picker adds one), a `header` of at most 12 characters, short labels, and the details in `description`. Keep file paths, backslashes and double quotes out of labels and question text. Ask one question per call whenever the text is long. If a call fails validation, retry once with simpler text; if it fails again, ask the same thing in plain chat as a numbered list and let the user answer with a number.
+
 ## Phase 0 - Get the repo ready (never dead-end)
 **Rule: a blocker is a question, not a stop.** For every problem below, say in one line what you found, offer the fixes with the recommended one first (`AskUserQuestion`), and carry out the chosen fix yourself. Stop only if the user declines every option. Run all git and runner commands inside the project root (`cd "<root>" && ...`).
 
@@ -32,7 +34,7 @@ Check, in this order:
 | `SPEC.md` and `ROADMAP.md` exist at the repo root, and the argument is empty or `next` | **Milestone**: build the first milestone whose heading is `## [ ] M<n> ...`. No readiness questions: the spec is the answer |
 | Every milestone is ticked | Say the roadmap is done; offer: describe the next change (request mode) / extend the roadmap with `/discover` |
 | A request was given | **Request**: run the readiness gate below |
-| `next` or no argument, but no ROADMAP | Do not stop. Read the repo and the last pipeline run, suggest 2-3 sensible next changes (plus "something else"), and offer "plan several steps ahead: create SPEC + ROADMAP with `/discover`" as the last option. A picked suggestion goes through the readiness gate as a request |
+| `next` or no argument, but no ROADMAP | Do not stop. Read the repo and the last pipeline run, then offer at most 4 options: 2-3 sensible next changes plus "Plan several steps with /discover" as the last one (the picker adds "Other" for a free-text change by itself). A picked suggestion goes through the readiness gate as a request |
 
 ### Readiness gate (request mode only)
 Read the repo first (README, CLAUDE.md, manifest, tests, `git log --oneline -5`). The request is ready when these four are known, from the request or the repo:

@@ -6,7 +6,7 @@ argument-hint: "[your idea, in any words]"
 
 Output of this skill: a project whose main branch holds `SPEC.md`, `ROADMAP.md` and `CLAUDE.md`, clear enough that `/setup-pipeline` can build it milestone by milestone without guessing. Templates: `${CLAUDE_SKILL_DIR}/templates/SPEC.md` and `${CLAUDE_SKILL_DIR}/templates/ROADMAP.md`.
 
-Plugin files are English; talk to the user in the language they write in. Write SPEC.md, ROADMAP.md and CLAUDE.md in English (downstream models work best with it), keeping the user's own product names and terms.
+Plugin files are English; talk to the user in the language they write in. When using `AskUserQuestion`: 2-4 options per question (never add an "Other" option: the picker adds one), a header of at most 12 characters, short labels with details in `description`, no file paths, backslashes or double quotes in labels. If a call fails validation, retry once with simpler text, then fall back to a numbered list in plain chat. Write SPEC.md, ROADMAP.md and CLAUDE.md in English (downstream models work best with it), keeping the user's own product names and terms.
 
 ## Phase 0 - Where the project lives
 - **Inside a git repo with code:** use it. Read README, CLAUDE.md / AGENTS.md, the package manifest, `git log --oneline -5` and the test setup first; never ask what the repo already tells you. **Pre-fill the spec from the code**: goal, platform, stack and commands are usually already decided, so only confirm them in one message. Record features that already work as ACs inside a milestone that starts ticked (`## [x] M0 - Existing baseline`), and interview only about what comes next. If the repo is left on an `auto/...` branch or has uncommitted changes, resolve that first the way `/setup-pipeline` Phase 0 does (ask, then fix).

@@ -215,7 +215,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.4.1): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.4.2): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 
