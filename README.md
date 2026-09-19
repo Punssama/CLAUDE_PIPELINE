@@ -112,11 +112,13 @@ Then build milestone by milestone:
 
 A readiness gate checks four things: outcome, scope, stack and done criteria. If one or two are missing it asks up to 3 questions; if the request is really a product idea, it sends you to `/discover` instead of guessing.
 
+It does not dead-end: typing `/setup-pipeline` or `/setup-pipeline next` in a project without a roadmap suggests 2-3 sensible next changes from the code and the last run, and every blocker (no git, uncommitted work, an unmerged previous run) comes with a recommended fix it applies once you agree.
+
 ### What `/setup-pipeline` does
 
 | Phase | What happens | You |
 |---|---|---|
-| 0. Preflight | git repo with a commit, node, claude, clean tree | Commit or stash if asked |
+| 0. Get ready | Finds the project and fixes blockers after asking: no git yet, uncommitted changes, a previous run left on its `auto/...` branch | Pick a fix (one is recommended) |
 | 1. Mode | Milestone (SPEC + ROADMAP exist) or request (readiness gate) | Answer ≤ 3 questions if needed |
 | 2. Toolkit | Token profile, framework, add-ons; reuses the previous run's choices on `next` | Choose |
 | 3. Config | Writes `.pipeline/config.json`, shows a summary with the max budget | Confirm |
@@ -213,7 +215,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.4.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.4.1): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 

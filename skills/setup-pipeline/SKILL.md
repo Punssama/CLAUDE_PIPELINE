@@ -8,18 +8,31 @@ Runner: `${CLAUDE_SKILL_DIR}/pipeline.mjs` (Node). One headless `claude -p` per 
 
 Plugin files are English; talk to the user in the language they write in. Keep each message short.
 
-## Phase 0 - Preflight (stop and explain if any fails)
-- Inside a git repo with at least one commit. If not: stop and suggest `/discover` (it creates and initializes the project).
-- `node -v` and `claude --version` work.
-- `git status --porcelain` is empty. If not: ask to commit or stash; never do it silently.
-- Note the main branch (`main` or `master`). If the current branch is a previous `auto/...` branch, handle it first (Phase 5 merge step) before starting new work.
+## Phase 0 - Get the repo ready (never dead-end)
+**Rule: a blocker is a question, not a stop.** For every problem below, say in one line what you found, offer the fixes with the recommended one first (`AskUserQuestion`), and carry out the chosen fix yourself. Stop only if the user declines every option. Run all git and runner commands inside the project root (`cd "<root>" && ...`).
+
+Check, in this order:
+1. **Tools** - `node -v`, `git --version`, `claude --version`. The only hard stop: say what to install (README's Install section) if one is missing.
+2. **Which project?**
+   - Inside a git repo: use its root.
+   - In a folder with code but no git: offer `git init` + commit everything as `chore: baseline` (Recommended) / pick another folder.
+   - In a home, desktop or downloads folder, or an empty one: list the projects this machine has run the pipeline on (the `cwd` of each `~/.claude-pipeline/runs/*.json`, newest first, plus any path the user mentions) and ask which one. If it is a brand-new idea, hand off to `/discover`.
+   - A repo with no commits: offer to commit what is there as the baseline.
+3. **Uncommitted changes** (`git status --porcelain`) - offer: commit them as `chore: wip before pipeline` (Recommended when they look intentional) / stash them (`git stash -u`, tell the user how to restore) / let the user handle it. Never discard anything.
+4. **Left on a previous `auto/...` branch** - look at what that run did (`git log --oneline <main>..HEAD`, the verdict line of `.pipeline/review.md`, the newest `~/.claude-pipeline/runs` record for this repo if any) and offer:
+   - *Merge it into `<main>` and continue* (Recommended when its last run committed and review passed): the Phase 5 merge, then continue from `<main>`.
+   - *Continue that run* (it ended paused or failed): rerun with `--from build` or `--from review` on the same branch.
+   - *Keep it for later and start from `<main>`*: `git switch <main>`; the branch stays untouched.
+   - *Delete it*: only after showing its commits and getting an explicit yes (`git branch -D`).
+5. **Main branch** - `main` or `master`, whichever exists. If neither, use the branch the repo was on before any `auto/...` work.
 
 ## Phase 1 - Pick the mode
 | Situation | Mode |
 |---|---|
-| `SPEC.md` and `ROADMAP.md` exist at the repo root, and the argument is empty or `next` | **Milestone**: build the first milestone whose heading is `## [ ] M<n> ...`. No readiness questions: the spec is the answer. If every milestone is ticked, say the roadmap is done and offer `/discover` to extend it |
+| `SPEC.md` and `ROADMAP.md` exist at the repo root, and the argument is empty or `next` | **Milestone**: build the first milestone whose heading is `## [ ] M<n> ...`. No readiness questions: the spec is the answer |
+| Every milestone is ticked | Say the roadmap is done; offer: describe the next change (request mode) / extend the roadmap with `/discover` |
 | A request was given | **Request**: run the readiness gate below |
-| Neither | Ask for the request in one line |
+| `next` or no argument, but no ROADMAP | Do not stop. Read the repo and the last pipeline run, suggest 2-3 sensible next changes (plus "something else"), and offer "plan several steps ahead: create SPEC + ROADMAP with `/discover`" as the last option. A picked suggestion goes through the readiness gate as a request |
 
 ### Readiness gate (request mode only)
 Read the repo first (README, CLAUDE.md, manifest, tests, `git log --oneline -5`). The request is ready when these four are known, from the request or the repo:
@@ -30,7 +43,7 @@ Read the repo first (README, CLAUDE.md, manifest, tests, `git log --oneline -5`)
 
 - All four known: continue.
 - 1-2 missing: ask at most 3 short questions, each with a recommended answer, then continue.
-- 3-4 missing, or the request is a whole product idea: stop. Say it needs a spec first and suggest `/discover <idea>`. Do not run the pipeline on a guess.
+- 3-4 missing, or the request is a whole product idea: do not run the pipeline on a guess. Offer: run `/discover` now with this idea (Recommended; it keeps the idea as its starting point) / answer a few more questions here instead.
 
 Write the answers into the `task` field as: outcome, scope, non-goals, done criteria.
 
@@ -128,7 +141,7 @@ Then wait for the completion notification and read the rest of the output.
 - Milestone mode: tell the user the next step: `/setup-pipeline next` builds the next unticked milestone with the same toolkit.
 
 ## Rules
-- Never edit product code, commit or push yourself before the runner finishes; the pipeline owns those steps. Phase 5 merges, ROADMAP ticks and setup files (CLAUDE.md trims) are yours, with consent.
+- Never edit product code, commit or push yourself before the runner finishes; the pipeline owns those steps. Phase 0 fixes (baseline/wip commits, stash, branch switch, merging a previous run), Phase 5 merges, ROADMAP ticks and setup files (CLAUDE.md trims) are yours, with consent.
 - Never force-push. Never run the pipeline on main/master. Report failures with their real output; never claim success without exit code 0.
 - Resume points: `--from build`, `--from review`, `--from commit` (state lives in `.pipeline/`).
 - On Windows the runner allows both `Bash` and `PowerShell` rules (headless sessions may expose either); on macOS/Linux only `Bash`.

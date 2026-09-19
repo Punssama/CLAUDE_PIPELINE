@@ -9,9 +9,10 @@ Output of this skill: a project whose main branch holds `SPEC.md`, `ROADMAP.md` 
 Plugin files are English; talk to the user in the language they write in. Write SPEC.md, ROADMAP.md and CLAUDE.md in English (downstream models work best with it), keeping the user's own product names and terms.
 
 ## Phase 0 - Where the project lives
-- **Inside a git repo with code:** use it. Read README, CLAUDE.md / AGENTS.md, the package manifest, `git log --oneline -5` and the test setup first; never ask what the repo already tells you.
+- **Inside a git repo with code:** use it. Read README, CLAUDE.md / AGENTS.md, the package manifest, `git log --oneline -5` and the test setup first; never ask what the repo already tells you. **Pre-fill the spec from the code**: goal, platform, stack and commands are usually already decided, so only confirm them in one message. Record features that already work as ACs inside a milestone that starts ticked (`## [x] M0 - Existing baseline`), and interview only about what comes next. If the repo is left on an `auto/...` branch or has uncommitted changes, resolve that first the way `/setup-pipeline` Phase 0 does (ask, then fix).
+- **In a folder with code but no git:** offer `git init` + committing the existing files as `chore: baseline`, then continue as above.
 - **Inside a git repo that already has SPEC.md and ROADMAP.md:** the project is already discovered. Offer to extend the spec (new ACs and milestones) or to go straight to `/setup-pipeline`.
-- **Not in a repo, or in a home / downloads / desktop folder:** ask for a project name and a parent folder. Suggest `<a projects folder the user already uses, else ~/projects>/<kebab-name>`. Then create the folder, `git init`, write a one-line `README.md`, and commit it (`chore: initial commit`), so the pipeline has a HEAD to diff against. Ask before creating anything.
+- **Not in a repo, or in a home / downloads / desktop folder:** if the idea sounds like an existing project, list the projects the pipeline has run on (`cwd` of `~/.claude-pipeline/runs/*.json`) and ask whether it is one of them. Otherwise ask for a project name and a parent folder. Suggest `<a projects folder the user already uses, else ~/projects>/<kebab-name>`. Then create the folder, `git init`, write a one-line `README.md`, and commit it (`chore: initial commit`), so the pipeline has a HEAD to diff against. Ask before creating anything.
 
 If agentmemory tools are available, search it for the project name and idea: reuse prior decisions instead of asking again.
 
