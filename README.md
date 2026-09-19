@@ -125,6 +125,20 @@ A readiness gate checks four things: outcome, scope, stack and done criteria. If
 
 In milestone mode the runner **rejects a plan that does not map every AC of the milestone to a task** (one retry), and the reviewer grades the change against those ACs.
 
+### Live dashboard
+
+When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`. One local page shows **every pipeline run on the machine**, across all your projects:
+
+- step progress (Plan → Build → Test → Review → Commit), elapsed time and fix-loop round
+- **real cost** per step and in total, against the budget cap
+- a live feed of every file read or edited and every command each step runs
+- test results, Critical review findings, and `plan.md` / `review.md` / test output
+- runs that were killed mid-way are marked `stopped`
+
+![Pipeline dashboard](assets/dashboard.png)
+
+It uses the first free port from 3120 up, listens on `127.0.0.1` only, and stops by itself when the last Claude Code session closes (a small SessionStart/SessionEnd hook keeps count). Open it any time by asking Claude for the pipeline dashboard. Run history is kept in `~/.claude-pipeline/` (override with `CLAUDE_PIPELINE_HOME`).
+
 ### Token profiles
 
 | Profile | Plan | Build | Review | Commit | Fix loops | Max budget per run* |
@@ -199,7 +213,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.3.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.4.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 

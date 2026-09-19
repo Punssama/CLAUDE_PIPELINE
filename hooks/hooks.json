@@ -1,0 +1,11 @@
+{
+  "description": "Keeps the pipeline dashboard alive while any Claude Code session is open; stops it when the last one closes.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/setup-pipeline/dashboard.mjs\" --session-start", "timeout": 10 } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/setup-pipeline/dashboard.mjs\" --session-end", "timeout": 10 } ] }
+    ]
+  }
+}

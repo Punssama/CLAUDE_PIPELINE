@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Runs</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --fg: #1d2330; --muted: #677084; --line: #e2e5eb;
+  --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; --warn: #b8640b; --run: #1c7ed6; --chip: #eef1f6;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1218; --panel: #171b23; --fg: #e4e7ee; --muted: #8b93a7; --line: #262c38;
+    --accent: #7b93ff; --ok: #51cf66; --bad: #ff6b6b; --warn: #fcc419; --run: #4dabf7; --chip: #202633; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { margin: 0; font-size: 16px; font-weight: 650; }
+header .sub { color: var(--muted); font-size: 12px; }
+header .live { margin-left: auto; font-size: 12px; color: var(--muted); }
+header .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
+main { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: calc(100vh - 50px); }
+aside { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; max-height: calc(100vh - 50px); }
+.proj { padding: 12px 16px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.run { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit;
+  padding: 9px 16px; border-left: 3px solid transparent; cursor: pointer; }
+.run:hover { background: var(--chip); }
+.run.sel { background: var(--chip); border-left-color: var(--accent); }
+.run .top { display: flex; justify-content: space-between; gap: 8px; }
+.run .name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run .meta { color: var(--muted); font-size: 12px; }
+.badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--chip); white-space: nowrap; }
+.s-running { color: var(--run); } .s-done { color: var(--ok); } .s-failed, .s-stopped { color: var(--bad); } .s-paused { color: var(--warn); }
+section { padding: 20px 24px; overflow-y: auto; max-height: calc(100vh - 50px); }
+.empty { color: var(--muted); padding: 40px; text-align: center; }
+h2 { margin: 0 0 4px; font-size: 18px; }
+.path { color: var(--muted); font-size: 12px; font-family: var(--mono); word-break: break-all; }
+.msg { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--chip); font-size: 13px; white-space: pre-wrap; }
+.track { display: flex; margin: 20px 0 8px; }
+.stage { flex: 1; text-align: center; position: relative; }
+.stage::before { content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px; background: var(--line); z-index: 0; }
+.stage:first-child::before { display: none; }
+.stage .node { position: relative; z-index: 1; width: 28px; height: 28px; margin: 0 auto 6px; border-radius: 50%;
+  border: 2px solid var(--line); background: var(--panel); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.stage.done .node { border-color: var(--ok); color: var(--ok); }
+.stage.failed .node { border-color: var(--bad); color: var(--bad); }
+.stage.running .node { border-color: var(--run); color: var(--run); animation: pulse 1.4s infinite; }
+.stage.skipped .node { border-style: dashed; }
+.stage .lbl { font-size: 12px; font-weight: 600; }
+.stage .sm { font-size: 11px; color: var(--muted); }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--run) 20%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .stage.running .node { animation: none; } }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 18px 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.card .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.card .v { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 6px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 18px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+td.n { font-variant-numeric: tabular-nums; }
+h3 { font-size: 13px; margin: 18px 0 6px; }
+.files button { font: inherit; font-size: 12px; margin-right: 6px; padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.files button:hover { border-color: var(--accent); }
+pre.file { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 360px;
+  overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; }
+.crit { margin: 4px 0 0 18px; padding: 0; color: var(--bad); font-size: 13px; }
+.feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; max-height: 420px; overflow-y: auto; font: 12px/1.5 var(--mono); }
+.ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; padding: 3px 10px; border-bottom: 1px solid var(--line); }
+.ev:last-child { border-bottom: 0; }
+.ev .t, .ev .st { color: var(--muted); }
+.ev.k-text .x { color: var(--fg); font-family: system-ui, sans-serif; }
+.ev.k-log .x { color: var(--accent); }
+.ev .x { word-break: break-word; }
+@media (max-width: 760px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+  aside, section { max-height: none; }
+  aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  section { padding: 16px; }
+  .ev { grid-template-columns: 54px 1fr; } .ev .st { display: none; }
+}
+</style>
+</head>
+<body>
+<header><h1>Pipeline Runs</h1><span class="sub">claude-pipeline · every project on this machine</span>
+<span class="live"><span class="dot" id="dot"></span><span id="live">live</span></span></header>
+<main>
+  <aside id="list"></aside>
+  <section id="detail"><div class="empty">No runs yet. Start one with <code>/setup-pipeline</code>.</div></section>
+</main>
+<script>
+const STAGES = [['plan', 'Plan'], ['build', 'Build'], ['test', 'Test'], ['review', 'Review'], ['commit', 'Commit']];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = (n) => '$' + (n || 0).toFixed(n >= 10 ? 1 : 3);
+const dur = (s) => s == null ? '' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+const since = (iso) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)) : null;
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
+let runs = [], selected = (location.hash.match(/run=([\w.-]+)/) || [])[1] || null;
+let feedFor = null, nextEvent = 0, openFile = null;
+
+function stageState(r, key) {
+  if (key === 'test') {
+    const last = r.tests[r.tests.length - 1];
+    if (!last) return r.steps.build.state === 'done' && r.currentStep === 'review' ? 'running' : 'pending';
+    return last.pass ? 'done' : 'failed';
+  }
+  const st = r.steps[key].state;
+  return st === 'running' && r.state !== 'running' ? 'failed' : st;
+}
+
+function renderList() {
+  if (!runs.length) { $('list').innerHTML = '<div class="empty">No runs yet.</div>'; return; }
+  const byProject = {};
+  for (const r of runs) (byProject[r.cwd] ||= []).push(r);
+  $('list').innerHTML = Object.values(byProject).map((rs) => `<div class="proj">${esc(rs[0].project)}</div>` + rs.map((r) => {
+    const elapsed = r.state === 'running' ? dur(since(r.startedAt)) : r.state === 'stopped' ? 'killed' : dur(Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000));
+    return `<button class="run ${r.id === selected ? 'sel' : ''}" data-id="${esc(r.id)}">
+      <div class="top"><span class="name">${esc(r.milestone ? r.milestone + ' · ' : '')}${esc(r.branch || '')}</span>
+      <span class="badge s-${r.state}">${r.state === 'running' && r.currentStep ? esc(r.currentStep) : esc(r.state)}</span></div>
+      <div class="meta">${new Date(r.startedAt).toLocaleString([], { hour12: false })} · ${elapsed} · ${money(r.totalCostUsd)}</div></button>`;
+  }).join('')).join('');
+}
+
+function renderDetail() {
+  const r = runs.find((x) => x.id === selected);
+  if (!r) { $('detail').innerHTML = '<div class="empty">Select a run.</div>'; return; }
+  const budget = Object.values(r.steps).reduce((a, s) => a + (s.budgetUsd || 0), 0);
+  const lastReview = r.reviews[r.reviews.length - 1];
+  const elapsed = r.state === 'running' ? since(r.startedAt) : r.state === 'stopped' ? null : Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000);
+  const feedScroll = $('feed') ? $('feed').scrollTop : null, atBottom = $('feed') ? $('feed').scrollHeight - $('feed').scrollTop - $('feed').clientHeight < 30 : true;
+  const oldFeed = $('feed') ? $('feed').innerHTML : '';
+  $('detail').innerHTML = `
+    <h2>${esc(r.project)} ${r.milestone ? '· ' + esc(r.milestone) : ''}</h2>
+    <div class="path">${esc(r.cwd)} · ${esc(r.branch)}${r.from !== 'plan' ? ' · resumed from ' + esc(r.from) : ''}</div>
+    ${r.task ? `<div class="msg">${esc(r.task)}</div>` : ''}
+    ${r.message && r.state !== 'running' ? `<div class="msg s-${r.state}">${esc(r.message)}</div>` : ''}
+    <div class="track">${STAGES.map(([k, l]) => {
+      const s = stageState(r, k), step = r.steps[k];
+      const sub = k === 'test' ? (r.tests.length ? `${r.tests.filter((t) => t.pass).length}/${r.tests.length} pass` : '')
+        : step.state === 'running' && r.state === 'running' ? dur(since(step.startedAt)) : step.seconds ? dur(step.seconds) : '';
+      return `<div class="stage ${s}"><div class="node">${s === 'done' ? '✓' : s === 'failed' ? '✕' : s === 'running' ? '•' : ''}</div>
+        <div class="lbl">${l}</div><div class="sm">${esc(sub)}</div></div>`;
+    }).join('')}</div>
+    <div class="grid">
+      <div class="card"><div class="k">Status</div><div class="v s-${r.state}">${esc(r.state)}</div></div>
+      <div class="card"><div class="k">Elapsed</div><div class="v">${elapsed == null ? '—' : dur(elapsed)}</div></div>
+      <div class="card"><div class="k">Round</div><div class="v">${r.round || 0} / ${r.maxFixLoops + 1}</div></div>
+      <div class="card"><div class="k">Cost / cap</div><div class="v">${money(r.totalCostUsd)} <span class="sm" style="font-size:12px;color:var(--muted)">/ ${money(budget)}</span></div>
+        <div class="bar"><i style="width:${Math.min(100, budget ? r.totalCostUsd / budget * 100 : 0)}%"></i></div></div>
+    </div>
+    ${r.acs?.length ? `<div class="path">Acceptance criteria: ${r.acs.map(esc).join(', ')}</div>` : ''}
+    <div class="tw"><table><thead><tr><th>Step</th><th>Model</th><th>State</th><th>Runs</th><th>Time</th><th>Cost / cap</th></tr></thead><tbody>
+    ${['plan', 'build', 'review', 'commit'].map((k) => { const s = r.steps[k], live = r.state === 'running', st = s.state === 'running' && !live ? r.state : s.state; return `<tr><td>${k}</td><td>${esc(s.model)}</td>
+      <td class="s-${st}">${esc(st)}</td>
+      <td class="n">${s.runs}</td><td class="n">${dur(s.state === 'running' && live ? since(s.startedAt) : s.seconds)}</td>
+      <td class="n">${money(s.costUsd)} / ${money(s.budgetUsd)}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    ${lastReview && !lastReview.pass && lastReview.critical.length ? `<h3>Critical review findings (round ${lastReview.round})</h3>
+      <ul class="crit">${lastReview.critical.map((c) => `<li>${esc(c.replace(/^\s*(?:[-*]|\d+\.)\s*/, ''))}</li>`).join('')}</ul>` : ''}
+    <h3>Files</h3>
+    <div class="files"><button data-f="plan">plan.md</button><button data-f="review">review.md</button><button data-f="test-output">test output</button></div>
+    <div id="filebox"></div>
+    <h3>Activity</h3>
+    <div class="feed" id="feed">${feedFor === r.id ? oldFeed : ''}</div>`;
+  if (feedFor === r.id && feedScroll != null) $('feed').scrollTop = atBottom ? $('feed').scrollHeight : feedScroll;
+  if (openFile) showFile(openFile.name, openFile.text);
+}
+
+function showFile(name, text) {
+  openFile = { name, text };
+  $('filebox').innerHTML = `<pre class="file">${esc(text)}</pre>`;
+}
+
+async function loadEvents() {
+  const r = runs.find((x) => x.id === selected);
+  if (!r) return;
+  if (feedFor !== r.id) { feedFor = r.id; nextEvent = 0; $('feed').innerHTML = ''; }
+  const res = await fetch(`/api/runs/${r.id}/events?after=${nextEvent}`).then((x) => x.json()).catch(() => null);
+  if (!res || !res.events.length) return;
+  nextEvent = res.next;
+  const feed = $('feed'), stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 30;
+  feed.insertAdjacentHTML('beforeend', res.events.map((e) =>
+    `<div class="ev k-${e.kind}"><span class="t">${clock(e.t)}</span><span class="st">${esc(e.step || '')}</span><span class="x">${esc(e.text)}</span></div>`).join(''));
+  if (stick) feed.scrollTop = feed.scrollHeight;
+}
+
+async function tick() {
+  try {
+    runs = await fetch('/api/runs').then((x) => x.json());
+    $('dot').style.background = 'var(--ok)'; $('live').textContent = 'live';
+    if (!selected && runs.length) selected = runs[0].id;
+    renderList(); renderDetail(); await loadEvents();
+  } catch {
+    $('dot').style.background = 'var(--bad)'; $('live').textContent = 'dashboard stopped';
+  }
+}
+
+document.addEventListener('click', async (e) => {
+  const run = e.target.closest('.run');
+  if (run) { selected = run.dataset.id; openFile = null; location.hash = 'run=' + selected; renderList(); renderDetail(); loadEvents(); return; }
+  const f = e.target.closest('[data-f]');
+  if (f) {
+    if (openFile?.name === f.dataset.f) { openFile = null; $('filebox').innerHTML = ''; return; }
+    showFile(f.dataset.f, await fetch(`/api/runs/${selected}/file/${f.dataset.f}`).then((x) => x.text()));
+  }
+});
+tick(); setInterval(tick, 1500);
+</script>
+</body>
+</html>

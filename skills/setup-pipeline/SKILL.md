@@ -106,7 +106,11 @@ Show a compact summary (mode, milestone and its ACs or the task, tools, skills p
 ```bash
 node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json
 ```
-Use `run_in_background: true` (takes minutes) and read the output when notified. Do not touch the repo while it runs.
+Use `run_in_background: true` (takes minutes). Do not touch the repo while it runs.
+
+**Send the dashboard link right away.** Within a few seconds the runner prints `[pipeline] dashboard: http://127.0.0.1:<port>/#run=<id>`. Read the background output until that line appears (it is among the first lines) and give the user the link in one line, e.g. "Live progress: <link>". The dashboard is one local page for the whole machine: it lists every pipeline run from every project, shows each step's state, elapsed time, real cost against the cap, test/review rounds, Critical review findings, plan.md/review.md, and a live feed of every tool call. It picks a free port itself (from 3120 up) and stays up while any Claude Code session is open. If no dashboard line appears, the run continues without it; say so and move on.
+
+Then wait for the completion notification and read the rest of the output.
 
 | Exit | Meaning | You do |
 |---|---|---|
@@ -128,3 +132,4 @@ Use `run_in_background: true` (takes minutes) and read the output when notified.
 - Never force-push. Never run the pipeline on main/master. Report failures with their real output; never claim success without exit code 0.
 - Resume points: `--from build`, `--from review`, `--from commit` (state lives in `.pipeline/`).
 - On Windows the runner allows both `Bash` and `PowerShell` rules (headless sessions may expose either); on macOS/Linux only `Bash`.
+- Run history lives in `~/.claude-pipeline/runs/` (override with `CLAUDE_PIPELINE_HOME`). If the user asks for the dashboard later, run `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --dashboard` to start or find it, and give them the printed link.
