@@ -146,12 +146,14 @@ function brief(name, input = {}) {
   return `${name}${v ? ' ' + v : ''}`;
 }
 
+// Headless steps are marked, so plugin hooks meant for people (like the one-time /toolkit hint) stay silent inside them.
+const STEP_ENV = { ...process.env, CLAUDE_PIPELINE_HEADLESS: '1' };
 // Runs claude headless with stream-json so every tool call reaches the dashboard as it happens.
 // Native installer gives claude(.exe); npm on Windows gives claude.cmd, which needs a shell.
 function claude(step, args, input) {
   return new Promise((resolve) => {
     const start = (cmd, a, opts) => {
-      const child = spawn(cmd, a, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(cmd, a, { env: STEP_ENV, ...opts, stdio: ['pipe', 'pipe', 'pipe'] });
       let buf = '', raw = '', err = '', result = null;
       child.stdout.on('data', (d) => {
         raw += d; buf += d;
@@ -185,6 +187,9 @@ async function run(step, prompt, tools, allowed, disallowed = '') {
     + (cfg.guidance ? `\n\nGuidance: ${cfg.guidance}` : '');
   const args = ['-p', '--model', s.model, '--tools', sh(tools), '--allowedTools', sh(allowed),
     '--max-budget-usd', String(s.budgetUsd ?? 3), '--no-session-persistence', '--output-format', 'stream-json', '--verbose'];
+  // The steps never call MCP tools, and every MCP server on the machine adds its tool schemas to the prompt: skipping them
+  // saved about 5K input tokens per step in a measurement (13.5K -> 8.2K on a trivial prompt). cfg.mcp = true opts back in.
+  if (!cfg.mcp) args.push('--strict-mcp-config');
   if (disallowed) args.push('--disallowedTools', sh(disallowed));
   if (cfg.disablePlugins?.length) { // plugins the user opted out of: no hooks, no skills, no tokens
     fs.writeFileSync(`${D}/settings.json`, JSON.stringify({ enabledPlugins: Object.fromEntries(cfg.disablePlugins.map((p) => [p, false])) }));

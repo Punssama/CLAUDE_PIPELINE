@@ -58,19 +58,15 @@ Write the answers into the `task` field as: outcome, scope, non-goals, done crit
 ## Phase 2 - Toolkit and token profile
 **If `.pipeline/config.json` exists from an earlier run, offer to reuse its toolkit, models and skills** (the usual case for `next`). Ask only whether anything should change; if not, skip to Phase 3.
 
-Otherwise collect installed toolkits (`claude plugin list` plus your available-skills list; record **exact** skill names), then ONE `AskUserQuestion` with the recommendation first:
-- **Token profile**: Economy / Balanced (Recommended) / Quality.
-- **Framework** (single): Light, no framework / agent-skills / superpowers, full / superpowers, partial.
-- **Add-ons** (multiSelect): ponytail (with the level in the label: `ultra` for prototypes, `full` by default, `lite` for large established codebases) / agentmemory.
+Otherwise:
+1. Look at the machine: `node "${CLAUDE_SKILL_DIR}/../toolkit/toolkit.mjs" --status`. It lists which companion plugins are installed (a framework may be a plugin or copied skills), their real token costs, and `chosen` (null if the user never used `/toolkit`). Record the **exact** skill names you will use (`claude plugin list` plus your available-skills list).
+2. If `chosen` is null, say in one line that no companion tools have been chosen yet and ask (`AskUserQuestion`): **Choose them now (about a minute)** (Recommended) / **Continue with what is installed**. If they choose now, follow the `claude-pipeline:toolkit` skill (Skill tool: it suggests a Recommended set, a Full set, or a pick-your-own list, and installs only what they confirm), then continue here. Never make this a blocker.
+3. ONE `AskUserQuestion` with the recommendation first:
+   - **Token profile**: Economy / Balanced (Recommended) / Quality.
+   - **Framework** (single; only frameworks that are installed, plus Light): Light, no framework / agent-skills / superpowers, full / superpowers, partial.
+   - **Add-ons** (multiSelect; only installed ones): ponytail (with the level in the label: `ultra` for prototypes, `full` by default, `lite` for large established codebases) / agentmemory.
 
-Recommend agent-skills for real projects that want a checkpoint per phase and security coverage; superpowers full for long autonomous quality runs; Light for small tasks. Never both agent-skills and superpowers full (two routers conflict). Mark tools not installed and give the install command; install only after the user agrees (a CLI install is picked up by the headless steps without restarting this session):
-
-| Tool | Install |
-|---|---|
-| ponytail | `claude plugin marketplace add DietrichGebert/ponytail` then `claude plugin install ponytail@ponytail` |
-| superpowers | `claude plugin marketplace add obra/superpowers-marketplace` then `claude plugin install superpowers@superpowers-marketplace` |
-| agent-skills | `claude plugin marketplace add addyosmani/agent-skills` then `claude plugin install agent-skills@addy-agent-skills` |
-| agentmemory | `claude plugin marketplace add rohitg00/agentmemory` then `claude plugin install agentmemory@agentmemory`, then start its server: `npx -y @agentmemory/agentmemory@latest` |
+Recommend agent-skills for real projects that want a checkpoint per phase and security coverage; superpowers full for long autonomous quality runs; Light for small tasks. Never both agent-skills and superpowers full (two routers conflict). If a framework the user wants is not installed, offer `/toolkit` instead of pasting install commands.
 
 ### Skills per step (exact installed names only; skip any that is missing)
 Interactive skills (`brainstorming`, `grilling`, `interview-me`) never go into a pipeline step: nobody is there to answer them.
@@ -92,7 +88,8 @@ Adjust: auth, payments or user data in scope → add `security-and-hardening` to
 | Quality | `claude-opus-5` | `claude-sonnet-5` | `claude-opus-5` | `claude-haiku-4-5-20251001` | 5 / 10 / 4 / 0.5 | 3 | 3 |
 
 Token hygiene you apply automatically:
-- `disablePlugins`: every installed plugin the user did not choose (`name@marketplace` from `claude plugin list`; never `claude-pipeline@punssama`). The runner turns them off for its headless steps only, removing their hooks, injected context and skill listings. agentmemory usually goes here too: you use it in this session (Phase 5); the headless steps do not need it.
+- `disablePlugins`: every installed plugin the user did not choose (`name@marketplace` from `claude plugin list`; never `claude-pipeline@punssama`), **plus every installed plugin whose `toolkit.mjs --status` entry has `headless: "off"`** (agentmemory, context-mode, mattpocock-skills) even if the user chose it for their own sessions. The runner turns them off for its headless steps only, removing their hooks, injected context and skill listings. Measured: context-mode alone adds about 8.6K input tokens to a headless step; agentmemory is used in this session (Phase 5), not inside the steps.
+- The runner also skips every MCP server in each step (`--strict-mcp-config`): about 5K input tokens saved per step in a measurement. Leave it that way; set `"mcp": true` in the config only if a step must call MCP tools.
 - `CLAUDE.md` over ~150 lines: every step loads it, so offer to trim it (commit before running).
 - No test runner and the change is small: omit `testCmd` and say there is no gate. Otherwise make "set up a minimal test runner" the first item of the task.
 

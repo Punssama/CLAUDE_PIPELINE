@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "about": "Companion plugins claude-pipeline can suggest. Only ids listed here can ever be installed by toolkit.mjs. alwaysOnTokens = input tokens added to every session; measured = read from `claude plugin details` or an A/B run; detailsUndercounts marks plugins whose hooks or MCP tools add more than `claude plugin details` reports. headless = whether the pipeline's own headless steps may load it: 'off' means the runner always switches it off there.",
+  "presets": {
+    "recommended": "Smallest set that improves this pipeline: less code and output (ponytail) plus the skills the Plan, Build and Review steps use (agent-skills).",
+    "full": "Everything compatible, for people who do not want to choose. Adds session memory and context-window protection; costs several thousand extra tokens in every interactive session."
+  },
+  "plugins": [
+    {
+      "id": "ponytail",
+      "plugin": "ponytail@ponytail",
+      "marketplace": "DietrichGebert/ponytail",
+      "title": "ponytail",
+      "kind": "efficiency",
+      "license": "MIT",
+      "does": "Makes the AI write the least code that works: YAGNI, standard library first, no speculative abstractions.",
+      "forPipeline": "Smaller diffs and less output in Build (fewer output tokens), and ponytail-review hunts over-engineering in Review.",
+      "alwaysOnTokens": 983,
+      "measured": true,
+      "headless": "on",
+      "presets": [
+        "recommended",
+        "full"
+      ]
+    },
+    {
+      "id": "agent-skills",
+      "plugin": "agent-skills@addy-agent-skills",
+      "marketplace": "addyosmani/agent-skills",
+      "title": "agent-skills",
+      "kind": "framework",
+      "license": "MIT",
+      "does": "25 engineering skills covering spec, plan, build, test, review, security, performance and launch, plus reviewer personas.",
+      "forPipeline": "Supplies the skills the steps invoke: planning-and-task-breakdown, test-driven-development, code-review-and-quality, security-and-hardening.",
+      "alwaysOnTokens": 2841,
+      "measured": true,
+      "headless": "on",
+      "looseSkill": "spec-driven-development",
+      "conflicts": [
+        "superpowers"
+      ],
+      "presets": [
+        "recommended",
+        "full"
+      ],
+      "notes": [
+        "Also counts as installed when its skills are copied into ~/.claude/skills."
+      ]
+    },
+    {
+      "id": "context-mode",
+      "plugin": "context-mode@context-mode",
+      "marketplace": "mksglu/context-mode",
+      "title": "context-mode",
+      "kind": "efficiency",
+      "license": "Elastic-2.0",
+      "does": "Keeps big tool output (web pages, logs, large files, Playwright snapshots) out of the conversation: code runs in a sandbox and only the answer comes back, with a searchable local index and session recovery after compaction.",
+      "forPipeline": "Best for the long interactive sessions where you research or debug with large outputs. The pipeline keeps it OFF inside its own headless steps.",
+      "alwaysOnTokens": 8640,
+      "measured": true,
+      "headless": "off",
+      "requires": {
+        "node": ">=22.5"
+      },
+      "presets": [
+        "full"
+      ],
+      "notes": [
+        "`claude plugin details` shows only ~631 tokens because hook-injected instructions and MCP tool schemas are not counted; the A/B run counts everything.",
+        "Measured here with Haiku on tiny tasks: +8.6K input tokens per session, and no saving when tool output is small. Its benefit appears with large outputs.",
+        "Observed side effect: on its first start it writes a self-heal hook into ~/.claude/hooks/ and ~/.claude/settings.json and adds itself to enabledPlugins. On native Windows that hook printed a PowerShell ParserError at every session start. Know this before installing.",
+        "Elastic License 2.0: source-available, free to use yourself, not OSI open source (you may not resell it as a hosted service).",
+        "Adds an MCP server and hooks that route or block some Bash, Read, Grep and WebFetch calls; the first start runs npm install for a native SQLite module (about 20 s).",
+        "Stores its index and session events locally in ~/.context-mode; its README states nothing leaves your machine (the optional ctx-insight command opens a hosted dashboard)."
+      ],
+      "setup": [
+        "After restarting Claude Code, run /context-mode:ctx-doctor: every check should pass."
+      ],
+      "detailsUndercounts": true
+    },
+    {
+      "id": "agentmemory",
+      "plugin": "agentmemory@agentmemory",
+      "marketplace": "rohitg00/agentmemory",
+      "title": "agentmemory",
+      "kind": "memory",
+      "license": "Apache-2.0",
+      "does": "Remembers decisions, gotchas and lessons across sessions, and resumes where you stopped (/handoff, /recall, /remember, /lesson).",
+      "forPipeline": "Saves each milestone's outcome and your corrections, so the next session starts informed. The headless steps do not need it.",
+      "alwaysOnTokens": 1425,
+      "measured": true,
+      "headless": "off",
+      "requires": {
+        "node": ">=20"
+      },
+      "presets": [
+        "full"
+      ],
+      "notes": [
+        "The listed tokens are a floor: its MCP tool schemas are not counted by `claude plugin details`.",
+        "Needs its local memory server running: npx -y @agentmemory/agentmemory@latest. On native Windows the engine (iii.exe v0.11.2) must be installed once by hand; WSL2 or Docker also work. See its README."
+      ],
+      "setup": [
+        "Start the server in a terminal: npx -y @agentmemory/agentmemory@latest",
+        "Native Windows: install iii.exe v0.11.2 first (see the agentmemory README, section Windows)."
+      ],
+      "detailsUndercounts": true
+    },
+    {
+      "id": "superpowers",
+      "plugin": "superpowers@superpowers-marketplace",
+      "marketplace": "obra/superpowers-marketplace",
+      "title": "superpowers",
+      "kind": "framework",
+      "license": "MIT",
+      "does": "A complete development methodology: brainstorm, plan, subagent-driven build, review, with git worktree isolation.",
+      "forPipeline": "An alternative to agent-skills for long autonomous runs. Use one or the other: two routers on the same task fight over commands and TDD style.",
+      "alwaysOnTokens": 688,
+      "measured": true,
+      "headless": "on",
+      "conflicts": [
+        "agent-skills"
+      ],
+      "presets": []
+    },
+    {
+      "id": "mattpocock-skills",
+      "plugin": "mattpocock-skills@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "mattpocock-skills",
+      "kind": "thinking",
+      "license": "MIT",
+      "does": "Sharp requirement and design skills: grilling (one question at a time), domain modeling, TDD, bug diagnosis.",
+      "forPipeline": "/discover follows its grilling style for the requirements interview when it is installed. Interactive only: never used inside headless steps.",
+      "alwaysOnTokens": 1609,
+      "measured": true,
+      "headless": "off",
+      "presets": []
+    }
+  ]
+}

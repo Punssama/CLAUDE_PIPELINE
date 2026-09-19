@@ -189,7 +189,7 @@ Each run keeps its own copy of the plan, review and test output, so old runs alw
 
 \* Sum of the four per-step caps, before fix loops (each loop adds Build + Review). It is a **ceiling**; real runs usually cost much less.
 
-Other ways it saves tokens: interactive questions happen once in `/discover` instead of the headless steps guessing; the headless steps read a short `SPEC.md` instead of a chat history; plugins you did not choose are switched off for the headless steps (`disablePlugins`); skills per step are capped; `CLAUDE.md` is kept short.
+Other ways it saves tokens: every step skips the machine's MCP servers (measured about 5K input tokens per step); interactive questions happen once in `/discover` instead of the headless steps guessing; the headless steps read a short `SPEC.md` instead of a chat history; plugins you did not choose are switched off for the headless steps (`disablePlugins`); skills per step are capped; `CLAUDE.md` is kept short.
 
 ### Exit codes
 
@@ -238,24 +238,40 @@ Written by `/setup-pipeline`; you can edit it and rerun.
 | `disablePlugins` | Plugins (`name@marketplace`) switched off for the headless steps only; your normal Claude Code is unaffected |
 | `skills` | Skill names **installed on your machine**. Empty is fine |
 | `budgetUsd` | Hard spending cap per step |
+| `mcp` | `true` lets the steps load MCP servers (default: skipped, see the token diet) |
 
-### Optional companion plugins
+### Companion plugins: `/toolkit`
 
-| Tool | What it adds | Install |
-|---|---|---|
-| [ponytail](https://github.com/DietrichGebert/ponytail) | Less code, less prose | `claude plugin marketplace add DietrichGebert/ponytail` → `claude plugin install ponytail@ponytail` |
-| [superpowers](https://github.com/obra/superpowers) | Plan/TDD/debug/review discipline | `claude plugin marketplace add obra/superpowers-marketplace` → `claude plugin install superpowers@superpowers-marketplace` |
-| [agent-skills](https://github.com/addyosmani/agent-skills) | Full lifecycle skills incl. security, performance | `claude plugin marketplace add addyosmani/agent-skills` → `claude plugin install agent-skills@addy-agent-skills` |
-| [agentmemory](https://github.com/rohitg00/agentmemory) | Memory across sessions | `claude plugin marketplace add rohitg00/agentmemory` → `claude plugin install agentmemory@agentmemory`, then `npx -y @agentmemory/agentmemory@latest` to start its server |
+The first time you start Claude Code after installing, a one-line hint tells you about `/toolkit`. It suggests companion plugins, shows what each really costs, and installs only what you confirm:
 
-None are required: the "Light" setup works with nothing else installed. `/setup-pipeline` asks before installing anything.
+| Choice | What you get |
+|---|---|
+| **Recommended set** | ponytail + agent-skills: less code and output, and the skills the Plan, Build and Review steps use (about 3.8K tokens per session) |
+| **Full set** (for people who do not want to read) | Recommended + context-mode + agentmemory (about 13.9K tokens per session): capability over budget |
+| **Let me pick** | Choose from the list; two competing frameworks (agent-skills / superpowers) are never installed together |
+| **Skip** | Nothing installed; `/toolkit` stays available |
+
+`/setup-pipeline` uses your choice and offers `/toolkit` once if you never made one. Nothing outside the catalog can be installed, every install needs one confirmation that lists the repos and licenses, and SSH GitHub URLs are rewritten to HTTPS for the install only, so machines without a GitHub SSH key work. Each plugin's token cost is measured (`claude plugin details`, or an A/B run where that undercounts), not guessed.
+
+| Plugin | What it does for you | Tokens per session | Notes |
+|---|---|---|---|
+| [ponytail](https://github.com/DietrichGebert/ponytail) | Least code that works: smaller diffs, less output | ~1.0K | MIT. Used in the steps |
+| [agent-skills](https://github.com/addyosmani/agent-skills) | Spec, plan, build, review, security skills and personas | ~2.8K | MIT. Used in the steps |
+| [context-mode](https://github.com/mksglu/context-mode) | Keeps huge tool output (web pages, logs, big files) out of the conversation; recovers state after compaction | ~8.6K | Elastic License 2.0 (source-available). Node 22.5+. Adds an MCP server and hooks, and edits `~/.claude/settings.json` on first start. **Off inside the pipeline's steps** (see below) |
+| [agentmemory](https://github.com/rohitg00/agentmemory) | Remembers decisions and lessons across sessions | ~1.4K+ | Apache-2.0. Needs its local server (`npx -y @agentmemory/agentmemory@latest`; native Windows also needs `iii.exe` once). Off inside the steps |
+| [superpowers](https://github.com/obra/superpowers) | A full methodology, alternative to agent-skills | ~0.7K | MIT. Pick one framework, not both |
+| [mattpocock-skills](https://github.com/mattpocock/skills) | Grilling and design skills used by `/discover` | ~1.6K | MIT. Interactive only |
+
+**Why context-mode is off inside the steps.** Measured with Haiku on tiny tasks (everything else disabled): a trivial step went from 13.5K to 22.1K input tokens with context-mode loaded (+8.6K), and a small git-and-read task from 32.7K to 47.5K, with no saving because the outputs were small. It shines on large outputs in long interactive sessions, so it is recommended there and kept out of the pipeline's headless steps. The same goes for agentmemory (you use it in your own session, not inside the steps).
+
+**Token diet built into the runner.** Every step already skips all MCP servers (`--strict-mcp-config`): on a trivial prompt that took the input from 13.5K to 8.2K tokens, and a step with the six working tools from 15.5K to 10.1K, because the steps never call MCP tools. Set `"mcp": true` in the config to opt back in.
 
 ## Caveats
 
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.6.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.7.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 
