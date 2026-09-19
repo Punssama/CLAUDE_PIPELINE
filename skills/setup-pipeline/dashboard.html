@@ -6,208 +6,344 @@
 <title>Pipeline Runs</title>
 <style>
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --fg: #1d2330; --muted: #677084; --line: #e2e5eb;
-  --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; --warn: #b8640b; --run: #1c7ed6; --chip: #eef1f6;
+  --bg: #f5f6f8; --panel: #ffffff; --sunk: #eef0f4; --fg: #1b2130; --muted: #636c80; --line: #e1e4ea;
+  --accent: #3656d0; --ok: #237a38; --bad: #c0262d; --warn: #9a5a00; --run: #1869b8;
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --r: 8px;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0f1218; --panel: #171b23; --fg: #e4e7ee; --muted: #8b93a7; --line: #262c38;
-    --accent: #7b93ff; --ok: #51cf66; --bad: #ff6b6b; --warn: #fcc419; --run: #4dabf7; --chip: #202633; }
+  :root { --bg: #0e1116; --panel: #161a21; --sunk: #1d222b; --fg: #e3e6ed; --muted: #8d95a8; --line: #272d38;
+    --accent: #7f97ff; --ok: #57c96b; --bad: #ff6b6b; --warn: #f0b429; --run: #54a8f0; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
-header h1 { margin: 0; font-size: 16px; font-weight: 650; }
-header .sub { color: var(--muted); font-size: 12px; }
-header .live { margin-left: auto; font-size: 12px; color: var(--muted); }
-header .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
-main { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: calc(100vh - 50px); }
-aside { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; max-height: calc(100vh - 50px); }
-.proj { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
-.run { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit;
-  padding: 9px 16px; border-left: 3px solid transparent; cursor: pointer; }
-.run:hover { background: var(--chip); }
-.run.sel { background: var(--chip); border-left-color: var(--accent); }
-.run .top { display: flex; justify-content: space-between; gap: 8px; }
-.run .name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run .meta { color: var(--muted); font-size: 12px; }
-.badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--chip); white-space: nowrap; }
-.s-running { color: var(--run); } .s-done { color: var(--ok); } .s-failed, .s-stopped { color: var(--bad); } .s-paused { color: var(--warn); }
-section { padding: 20px 24px; overflow-y: auto; max-height: calc(100vh - 50px); }
-.empty { color: var(--muted); padding: 40px; text-align: center; }
-h2 { margin: 0 0 4px; font-size: 18px; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* ---- header ---- */
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
+header h1 { margin: 0; font-size: 15px; font-weight: 650; }
+header .counts { color: var(--muted); font-size: 12px; }
+header .live { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.dot.off { background: var(--bad); }
+
+/* ---- layout: each pane scrolls on its own ---- */
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+#list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; }
+#detail { overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px 32px; min-width: 0; }
+
+/* ---- sidebar ---- */
+.filters { display: flex; gap: 4px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex: none; }
+.seg { border: 1px solid var(--line); background: none; border-radius: 6px; padding: 3px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.seg[aria-pressed="true"] { background: var(--sunk); color: var(--fg); border-color: var(--muted); }
+.proj { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 14px 16px 4px;
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
+.run { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 16px 8px 13px;
+  border-left: 3px solid transparent; cursor: pointer; }
+.run:hover { background: var(--sunk); }
+.run[aria-current="true"] { background: var(--sunk); border-left-color: var(--accent); }
+.run .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.run .name { font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run .sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.s-running { color: var(--run); } .s-done { color: var(--ok); } .s-failed, .s-stopped { color: var(--bad); }
+.s-paused { color: var(--warn); } .s-pending, .s-skipped { color: var(--muted); }
+.empty { color: var(--muted); padding: 32px 20px; text-align: center; font-size: 13px; }
+
+/* ---- buttons ---- */
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn.danger { color: var(--bad); }
+.btn.danger:hover:not(:disabled) { border-color: var(--bad); }
+.btn:disabled { color: var(--muted); cursor: not-allowed; opacity: .7; }
+.proj .btn { font-size: 11px; padding: 1px 8px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+/* ---- detail ---- */
 .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.del { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
-  background: var(--panel); color: var(--bad); cursor: pointer; white-space: nowrap; }
-.del:hover:not(:disabled) { border-color: var(--bad); }
-.del:disabled { color: var(--muted); cursor: not-allowed; }
-.proj .del { font-size: 11px; padding: 1px 8px; text-transform: none; letter-spacing: 0; font-weight: 500; }
-.path { color: var(--muted); font-size: 12px; font-family: var(--mono); word-break: break-all; }
-.msg { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--chip); font-size: 13px; white-space: pre-wrap; }
-.track { display: flex; margin: 20px 0 8px; }
-.stage { flex: 1; text-align: center; position: relative; }
-.stage::before { content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px; background: var(--line); z-index: 0; }
+h2 { margin: 0; font-size: 18px; font-weight: 650; }
+.where { margin-top: 2px; color: var(--muted); font: 12px/1.5 var(--mono); word-break: break-all; }
+.task { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; font-size: 13px; }
+.task summary { cursor: pointer; list-style: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.task[open] summary { display: block; -webkit-line-clamp: unset; }
+.task summary::-webkit-details-marker { display: none; }
+.note { margin-top: 8px; padding: 8px 12px; border-radius: var(--r); font-size: 13px; white-space: pre-wrap; border: 1px solid var(--line); background: var(--sunk); }
+.note.s-done { color: var(--fg); border-left: 3px solid var(--ok); }
+.note.s-failed, .note.s-stopped { color: var(--fg); border-left: 3px solid var(--bad); }
+.note.s-paused { color: var(--fg); border-left: 3px solid var(--warn); }
+
+.track { display: flex; margin: 22px 0 6px; }
+.stage { flex: 1; text-align: center; position: relative; min-width: 0; }
+.stage::before { content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px; background: var(--line); }
 .stage:first-child::before { display: none; }
-.stage .node { position: relative; z-index: 1; width: 28px; height: 28px; margin: 0 auto 6px; border-radius: 50%;
-  border: 2px solid var(--line); background: var(--panel); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.stage.done::before, .stage.running::before, .stage.failed::before { background: var(--ok); }
+.node { position: relative; width: 28px; height: 28px; margin: 0 auto 6px; border-radius: 50%; border: 2px solid var(--line);
+  background: var(--panel); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); }
 .stage.done .node { border-color: var(--ok); color: var(--ok); }
 .stage.failed .node { border-color: var(--bad); color: var(--bad); }
 .stage.running .node { border-color: var(--run); color: var(--run); animation: pulse 1.4s infinite; }
 .stage.skipped .node { border-style: dashed; }
 .stage .lbl { font-size: 12px; font-weight: 600; }
-.stage .sm { font-size: 11px; color: var(--muted); }
-@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--run) 20%, transparent); } }
+.stage .sm { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 16px; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--run) 22%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .stage.running .node { animation: none; } }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 18px 0; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.card .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-.card .v { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 6px; overflow: hidden; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 18px 0 14px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stat .v { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.bar { height: 5px; border-radius: 3px; background: var(--sunk); margin-top: 7px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--accent); }
-.tw { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 18px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.bar.hot > i { background: var(--warn); }
+.acs { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
 th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
 td.n { font-variant-numeric: tabular-nums; }
-h3 { font-size: 13px; margin: 18px 0 6px; }
-.files button { font: inherit; font-size: 12px; margin-right: 6px; padding: 4px 10px; border-radius: 6px;
-  border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
-.files button:hover { border-color: var(--accent); }
-pre.file { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 360px;
-  overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; }
-.crit { margin: 4px 0 0 18px; padding: 0; color: var(--bad); font-size: 13px; }
-.feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; max-height: 420px; overflow-y: auto; font: 12px/1.5 var(--mono); }
-.ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; padding: 3px 10px; border-bottom: 1px solid var(--line); }
-.ev:last-child { border-bottom: 0; }
+.crit { margin: 14px 0 0; padding: 10px 12px 10px 28px; border: 1px solid var(--line); border-left: 3px solid var(--bad); border-radius: var(--r); background: var(--panel); font-size: 13px; }
+.crit b { display: block; margin-left: -16px; margin-bottom: 4px; }
+
+/* ---- tabs: activity + files ---- */
+.panel { margin-top: 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
+.tabs { display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--sunk); flex-wrap: wrap; }
+.tab { border: 0; background: none; padding: 9px 10px; font-size: 13px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.tools { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--muted); }
+.tools select { font: inherit; font-size: 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+.tools label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.pane { height: 420px; overflow: auto; overscroll-behavior: contain; }
+pre.file { margin: 0; padding: 12px 14px; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.ev { display: grid; grid-template-columns: 62px 58px minmax(0, 1fr); gap: 8px; padding: 3px 12px; border-bottom: 1px solid var(--line); font: 12px/1.5 var(--mono); }
 .ev .t, .ev .st { color: var(--muted); }
-.ev.k-text .x { color: var(--fg); font-family: system-ui, sans-serif; }
+.feed:empty::before { content: "No activity recorded yet."; display: block; padding: 32px; text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; }
+.ev .x { word-break: break-word; font-weight: 400; }
+.ev.k-text .x { font-family: system-ui, sans-serif; color: var(--muted); }
 .ev.k-log .x { color: var(--accent); }
-.ev .x { word-break: break-word; }
+.feed[data-step] .ev { display: none; }
+.feed[data-step="plan"] .ev[data-step="plan"], .feed[data-step="build"] .ev[data-step="build"],
+.feed[data-step="review"] .ev[data-step="review"], .feed[data-step="commit"] .ev[data-step="commit"] { display: grid; }
+
 @media (max-width: 760px) {
+  body { display: block; height: auto; }
   main { grid-template-columns: minmax(0, 1fr); }
-  aside, section { max-height: none; }
   aside { border-right: 0; border-bottom: 1px solid var(--line); }
-  section { padding: 16px; }
-  .ev { grid-template-columns: 54px 1fr; } .ev .st { display: none; }
+  #list { max-height: 45vh; }
+  #detail { padding: 16px; overflow: visible; }
+  .ev { grid-template-columns: 54px minmax(0, 1fr); } .ev .st { display: none; }
+  header .counts { display: none; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
 </head>
 <body>
-<header><h1>Pipeline Runs</h1><span class="sub">claude-pipeline · every project on this machine</span>
-<span class="live"><span class="dot" id="dot"></span><span id="live">live</span></span></header>
+<header>
+  <h1>Pipeline Runs</h1>
+  <span class="counts" id="counts"></span>
+  <span class="live" role="status"><span class="dot" id="dot"></span><span id="live">connecting…</span></span>
+</header>
 <main>
-  <aside id="list"></aside>
-  <section id="detail"><div class="empty">No runs yet. Start one with <code>/setup-pipeline</code>.</div></section>
+  <aside aria-label="Runs">
+    <div class="filters" role="group" aria-label="Filter runs">
+      <button class="seg" data-filter="all" aria-pressed="true">All</button>
+      <button class="seg" data-filter="running" aria-pressed="false">Running</button>
+      <button class="seg" data-filter="problem" aria-pressed="false">Failed</button>
+    </div>
+    <div id="list"></div>
+  </aside>
+  <section id="detail" aria-live="off"><div class="empty">No runs yet. Start one with <code>/setup-pipeline</code>.</div></section>
 </main>
 <script>
 const STAGES = [['plan', 'Plan'], ['build', 'Build'], ['test', 'Test'], ['review', 'Review'], ['commit', 'Commit']];
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const money = (n) => '$' + (n || 0).toFixed(n >= 10 ? 1 : 3);
-const dur = (s) => s == null ? '' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+const money = (n) => '$' + (n || 0).toFixed((n || 0) >= 10 ? 1 : 3);
+const dur = (s) => s == null ? '—' : s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`;
 const since = (iso) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)) : null;
 const clock = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
-let runs = [], selected = (location.hash.match(/run=([\w.-]+)/) || [])[1] || null;
-let feedFor = null, nextEvent = 0, openFile = null;
+const when = (iso) => {
+  const d = new Date(iso), today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
+let runs = [], filter = 'all';
+let selected = (location.hash.match(/run=([\w.-]+)/) || [])[1] || null;
+let listSig = '', summarySig = '', shellFor = null, nextEvent = 0, follow = true, tab = 'activity';
+
+const live = (r) => r.state === 'running';
+const elapsedOf = (r) => live(r) ? null : r.state === 'stopped' ? undefined : Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000);
+// Ticking clocks are spans with data-since; updateClocks() rewrites only their text, so nothing else re-renders.
+const clockSpan = (iso) => `<span data-since="${esc(iso)}">${dur(since(iso))}</span>`;
 
 function stageState(r, key) {
   if (key === 'test') {
     const last = r.tests[r.tests.length - 1];
-    if (!last) return r.steps.build.state === 'done' && r.currentStep === 'review' ? 'running' : 'pending';
+    if (!last) return r.currentStep === 'review' && live(r) ? 'running' : 'pending';
     return last.pass ? 'done' : 'failed';
   }
   const st = r.steps[key].state;
-  return st === 'running' && r.state !== 'running' ? 'failed' : st;
+  return st === 'running' && !live(r) ? 'failed' : st;
+}
+const label = (r) => live(r) && r.currentStep ? r.currentStep : r.state;
+
+// ---- sidebar ---------------------------------------------------------------
+function renderList() {
+  const shown = runs.filter((r) => filter === 'all' || (filter === 'running' ? live(r) : ['failed', 'stopped'].includes(r.state)));
+  const sig = JSON.stringify([filter, selected, shown]);
+  if (sig === listSig) return;
+  listSig = sig;
+  const el = $('list'), top = el.scrollTop;
+  if (!shown.length) { el.innerHTML = `<div class="empty">${runs.length ? 'No runs match this filter.' : 'No runs yet.'}</div>`; return; }
+  const byProject = {};
+  for (const r of shown) (byProject[r.cwd] ||= []).push(r);
+  el.innerHTML = Object.values(byProject).map((rs) => {
+    const all = runs.filter((r) => r.cwd === rs[0].cwd);
+    return `<div class="proj"><span>${esc(rs[0].project)}</span>${all.some((r) => !live(r))
+      ? `<button class="btn danger" data-clear="${esc(rs[0].cwd)}" aria-label="Delete finished runs of ${esc(rs[0].project)}">Clear finished</button>` : ''}</div>`
+    + rs.map((r) => {
+      const e = elapsedOf(r);
+      return `<button class="run" data-id="${esc(r.id)}" aria-current="${r.id === selected}">
+        <div class="top"><span class="name">${esc(r.milestone ? `${r.milestone} · ` : '')}${esc(r.branch || '')}</span>
+          <span class="state s-${r.state}">${esc(label(r))}</span></div>
+        ${r.task ? `<div class="sub">${esc(r.task)}</div>` : ''}
+        <div class="meta">${when(r.startedAt)} · ${live(r) ? clockSpan(r.startedAt) : e === undefined ? 'killed' : dur(e)} · ${money(r.totalCostUsd)}</div>
+      </button>`;
+    }).join('');
+  }).join('');
+  el.scrollTop = top;
 }
 
-function renderList() {
-  if (!runs.length) { $('list').innerHTML = '<div class="empty">No runs yet.</div>'; return; }
-  const byProject = {};
-  for (const r of runs) (byProject[r.cwd] ||= []).push(r);
-  $('list').innerHTML = Object.values(byProject).map((rs) => `<div class="proj"><span>${esc(rs[0].project)}</span>${rs.some((r) => r.state !== 'running')
-      ? `<button class="del" data-clear="${esc(rs[0].cwd)}" title="Delete every finished run of this project">Clear finished</button>` : ''}</div>` + rs.map((r) => {
-    const elapsed = r.state === 'running' ? dur(since(r.startedAt)) : r.state === 'stopped' ? 'killed' : dur(Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000));
-    return `<button class="run ${r.id === selected ? 'sel' : ''}" data-id="${esc(r.id)}">
-      <div class="top"><span class="name">${esc(r.milestone ? r.milestone + ' · ' : '')}${esc(r.branch || '')}</span>
-      <span class="badge s-${r.state}">${r.state === 'running' && r.currentStep ? esc(r.currentStep) : esc(r.state)}</span></div>
-      <div class="meta">${new Date(r.startedAt).toLocaleString([], { hour12: false })} · ${elapsed} · ${money(r.totalCostUsd)}</div></button>`;
-  }).join('')).join('');
+// ---- detail: a fixed shell (summary + tabs), built once per selected run ------
+function buildShell(r) {
+  shellFor = r.id; summarySig = ''; nextEvent = 0; follow = true;
+  $('detail').innerHTML = `<div id="summary"></div>
+    <div class="panel">
+      <div class="tabs" role="tablist" aria-label="Run details">
+        <button class="tab" role="tab" data-tab="activity">Activity</button>
+        <button class="tab" role="tab" data-tab="plan">plan.md</button>
+        <button class="tab" role="tab" data-tab="review">review.md</button>
+        <button class="tab" role="tab" data-tab="test-output">Test output</button>
+        <div class="tools" id="feedTools">
+          <select id="stepFilter" aria-label="Show steps"><option value="">All steps</option>
+            <option>plan</option><option>build</option><option>review</option><option>commit</option></select>
+          <label><input type="checkbox" id="follow" checked> Follow</label>
+        </div>
+        <div class="tools" id="fileTools" hidden><button class="btn" id="reload">Reload</button></div>
+      </div>
+      <div class="pane feed" id="feed" role="tabpanel" aria-label="Activity"></div>
+      <div class="pane" id="filePane" role="tabpanel" hidden><pre class="file" id="fileText"></pre></div>
+    </div>`;
+  $('feed').addEventListener('scroll', () => {
+    const f = $('feed'), atEnd = f.scrollHeight - f.scrollTop - f.clientHeight < 24;
+    if (follow !== atEnd) { follow = atEnd; $('follow').checked = atEnd; }
+  });
+  $('follow').addEventListener('change', (e) => { follow = e.target.checked; if (follow) $('feed').scrollTop = $('feed').scrollHeight; });
+  $('stepFilter').addEventListener('change', (e) => {
+    if (e.target.value) $('feed').dataset.step = e.target.value; else delete $('feed').dataset.step;
+  });
+  $('reload').addEventListener('click', () => showTab(tab));
+  showTab(tab);
+}
+
+async function showTab(name) {
+  tab = name;
+  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+  const isFeed = name === 'activity';
+  $('feed').hidden = !isFeed; $('filePane').hidden = isFeed;
+  $('feedTools').hidden = !isFeed; $('fileTools').hidden = isFeed;
+  if (isFeed) return;
+  $('fileText').textContent = 'Loading…';
+  const text = await fetch(`/api/runs/${shellFor}/file/${name}`).then((x) => x.text()).catch(() => 'Could not load the file.');
+  if (tab === name) { $('fileText').textContent = text; }
+}
+
+function renderSummary(r) {
+  const sig = JSON.stringify(r);
+  if (sig === summarySig) return;
+  summarySig = sig;
+  const budget = Object.values(r.steps).reduce((a, s) => a + (s.budgetUsd || 0), 0);
+  const pct = budget ? Math.min(100, (r.totalCostUsd / budget) * 100) : 0;
+  const e = elapsedOf(r), lastReview = r.reviews[r.reviews.length - 1];
+  const pane = $('detail'), top = pane.scrollTop, winTop = window.scrollY;
+  queueMicrotask(() => { pane.scrollTop = top; if (window.scrollY !== winTop) window.scrollTo(0, winTop); });
+  $('summary').innerHTML = `
+    <div class="head"><div><h2>${esc(r.project)}${r.milestone ? ` · ${esc(r.milestone)}` : ''}</h2>
+      <div class="where">${esc(r.cwd)} · ${esc(r.branch)}${r.from !== 'plan' ? ` · resumed from ${esc(r.from)}` : ''}</div></div>
+      <button class="btn danger" data-del="${esc(r.id)}" ${live(r) ? 'disabled title="A running pipeline cannot be deleted"' : ''}>Delete run</button></div>
+    ${r.task ? `<details class="task"><summary title="Show the whole task">${esc(r.task)}</summary></details>` : ''}
+    ${r.message && !live(r) ? `<div class="note s-${r.state}">${esc(r.message)}</div>` : ''}
+    <div class="track" role="list" aria-label="Steps">${STAGES.map(([k, l]) => {
+      const s = stageState(r, k), step = r.steps[k];
+      const sub = k === 'test' ? (r.tests.length ? `${r.tests.filter((t) => t.pass).length}/${r.tests.length} pass` : '')
+        : step.state === 'running' && live(r) ? clockSpan(step.startedAt) : step.seconds ? dur(step.seconds) : '';
+      return `<div class="stage ${s}" role="listitem" aria-label="${l}: ${s}"><div class="node" aria-hidden="true">${s === 'done' ? '✓' : s === 'failed' ? '✕' : s === 'running' ? '•' : ''}</div>
+        <div class="lbl">${l}</div><div class="sm">${k === 'test' ? esc(sub) : sub}</div></div>`;
+    }).join('')}</div>
+    <div class="stats">
+      <div class="stat"><div class="k">Status</div><div class="v"><span class="state s-${r.state}">${esc(live(r) && r.currentStep ? `running · ${r.currentStep}` : r.state)}</span></div></div>
+      <div class="stat"><div class="k">Elapsed</div><div class="v">${live(r) ? clockSpan(r.startedAt) : e === undefined ? '—' : dur(e)}</div></div>
+      <div class="stat"><div class="k">Fix round</div><div class="v">${r.round || 0} <small>/ ${r.maxFixLoops + 1}</small></div></div>
+      <div class="stat"><div class="k">Cost / cap</div><div class="v">${money(r.totalCostUsd)} <small>/ ${money(budget)}</small></div>
+        <div class="bar ${pct > 80 ? 'hot' : ''}" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100" aria-label="Budget used"><i style="width:${pct}%"></i></div></div>
+    </div>
+    ${r.acs?.length ? `<div class="acs">Acceptance criteria: ${r.acs.map(esc).join(', ')}</div>` : ''}
+    <div class="tw"><table><thead><tr><th>Step</th><th>Model</th><th>State</th><th>Runs</th><th>Time</th><th>Cost / cap</th></tr></thead><tbody>
+    ${['plan', 'build', 'review', 'commit'].map((k) => {
+      const s = r.steps[k], st = s.state === 'running' && !live(r) ? r.state : s.state;
+      return `<tr><td>${k}</td><td>${esc(s.model)}</td><td><span class="state s-${st}">${esc(st)}</span></td>
+        <td class="n">${s.runs}</td><td class="n">${s.state === 'running' && live(r) ? clockSpan(s.startedAt) : s.seconds ? dur(s.seconds) : ''}</td>
+        <td class="n">${money(s.costUsd)} / ${money(s.budgetUsd)}</td></tr>`;
+    }).join('')}
+    </tbody></table></div>
+    ${lastReview && !lastReview.pass && lastReview.critical.length ? `<div class="crit"><b>Critical review findings (round ${lastReview.round})</b>
+      <ul>${lastReview.critical.map((c) => `<li>${esc(c.replace(/^\s*(?:[-*]|\d+\.)\s*/, ''))}</li>`).join('')}</ul></div>` : ''}`;
 }
 
 function renderDetail() {
   const r = runs.find((x) => x.id === selected);
-  if (!r) { $('detail').innerHTML = '<div class="empty">Select a run.</div>'; return; }
-  const budget = Object.values(r.steps).reduce((a, s) => a + (s.budgetUsd || 0), 0);
-  const lastReview = r.reviews[r.reviews.length - 1];
-  const elapsed = r.state === 'running' ? since(r.startedAt) : r.state === 'stopped' ? null : Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000);
-  const feedScroll = $('feed') ? $('feed').scrollTop : null, atBottom = $('feed') ? $('feed').scrollHeight - $('feed').scrollTop - $('feed').clientHeight < 30 : true;
-  const oldFeed = $('feed') ? $('feed').innerHTML : '';
-  $('detail').innerHTML = `
-    <div class="head"><h2>${esc(r.project)} ${r.milestone ? '· ' + esc(r.milestone) : ''}</h2>
-      <button class="del" data-del="${esc(r.id)}" ${r.state === 'running' ? 'disabled title="A running pipeline cannot be deleted"' : 'title="Delete this run from the dashboard"'}>Delete run</button></div>
-    <div class="path">${esc(r.cwd)} · ${esc(r.branch)}${r.from !== 'plan' ? ' · resumed from ' + esc(r.from) : ''}</div>
-    ${r.task ? `<div class="msg">${esc(r.task)}</div>` : ''}
-    ${r.message && r.state !== 'running' ? `<div class="msg s-${r.state}">${esc(r.message)}</div>` : ''}
-    <div class="track">${STAGES.map(([k, l]) => {
-      const s = stageState(r, k), step = r.steps[k];
-      const sub = k === 'test' ? (r.tests.length ? `${r.tests.filter((t) => t.pass).length}/${r.tests.length} pass` : '')
-        : step.state === 'running' && r.state === 'running' ? dur(since(step.startedAt)) : step.seconds ? dur(step.seconds) : '';
-      return `<div class="stage ${s}"><div class="node">${s === 'done' ? '✓' : s === 'failed' ? '✕' : s === 'running' ? '•' : ''}</div>
-        <div class="lbl">${l}</div><div class="sm">${esc(sub)}</div></div>`;
-    }).join('')}</div>
-    <div class="grid">
-      <div class="card"><div class="k">Status</div><div class="v s-${r.state}">${esc(r.state)}</div></div>
-      <div class="card"><div class="k">Elapsed</div><div class="v">${elapsed == null ? '—' : dur(elapsed)}</div></div>
-      <div class="card"><div class="k">Round</div><div class="v">${r.round || 0} / ${r.maxFixLoops + 1}</div></div>
-      <div class="card"><div class="k">Cost / cap</div><div class="v">${money(r.totalCostUsd)} <span class="sm" style="font-size:12px;color:var(--muted)">/ ${money(budget)}</span></div>
-        <div class="bar"><i style="width:${Math.min(100, budget ? r.totalCostUsd / budget * 100 : 0)}%"></i></div></div>
-    </div>
-    ${r.acs?.length ? `<div class="path">Acceptance criteria: ${r.acs.map(esc).join(', ')}</div>` : ''}
-    <div class="tw"><table><thead><tr><th>Step</th><th>Model</th><th>State</th><th>Runs</th><th>Time</th><th>Cost / cap</th></tr></thead><tbody>
-    ${['plan', 'build', 'review', 'commit'].map((k) => { const s = r.steps[k], live = r.state === 'running', st = s.state === 'running' && !live ? r.state : s.state; return `<tr><td>${k}</td><td>${esc(s.model)}</td>
-      <td class="s-${st}">${esc(st)}</td>
-      <td class="n">${s.runs}</td><td class="n">${dur(s.state === 'running' && live ? since(s.startedAt) : s.seconds)}</td>
-      <td class="n">${money(s.costUsd)} / ${money(s.budgetUsd)}</td></tr>`; }).join('')}
-    </tbody></table></div>
-    ${lastReview && !lastReview.pass && lastReview.critical.length ? `<h3>Critical review findings (round ${lastReview.round})</h3>
-      <ul class="crit">${lastReview.critical.map((c) => `<li>${esc(c.replace(/^\s*(?:[-*]|\d+\.)\s*/, ''))}</li>`).join('')}</ul>` : ''}
-    <h3>Files</h3>
-    <div class="files"><button data-f="plan">plan.md</button><button data-f="review">review.md</button><button data-f="test-output">test output</button></div>
-    <div id="filebox"></div>
-    <h3>Activity</h3>
-    <div class="feed" id="feed">${feedFor === r.id ? oldFeed : ''}</div>`;
-  if (feedFor === r.id && feedScroll != null) $('feed').scrollTop = atBottom ? $('feed').scrollHeight : feedScroll;
-  if (openFile) showFile(openFile.name, openFile.text);
-}
-
-function showFile(name, text) {
-  openFile = { name, text };
-  $('filebox').innerHTML = `<pre class="file">${esc(text)}</pre>`;
+  if (!r) { shellFor = null; $('detail').innerHTML = `<div class="empty">${runs.length ? 'Select a run.' : 'No runs yet. Start one with <code>/setup-pipeline</code>.'}</div>`; return; }
+  if (shellFor !== r.id) buildShell(r);
+  renderSummary(r);
 }
 
 async function loadEvents() {
-  const r = runs.find((x) => x.id === selected);
-  if (!r) return;
-  if (feedFor !== r.id) { feedFor = r.id; nextEvent = 0; $('feed').innerHTML = ''; }
-  const res = await fetch(`/api/runs/${r.id}/events?after=${nextEvent}`).then((x) => x.json()).catch(() => null);
-  if (!res || !res.events.length) return;
+  if (!shellFor) return;
+  const id = shellFor;
+  const res = await fetch(`/api/runs/${id}/events?after=${nextEvent}`).then((x) => x.json()).catch(() => null);
+  if (!res || id !== shellFor || !res.events.length) return;
   nextEvent = res.next;
-  const feed = $('feed'), stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 30;
+  const feed = $('feed');
   feed.insertAdjacentHTML('beforeend', res.events.map((e) =>
-    `<div class="ev k-${e.kind}"><span class="t">${clock(e.t)}</span><span class="st">${esc(e.step || '')}</span><span class="x">${esc(e.text)}</span></div>`).join(''));
-  if (stick) feed.scrollTop = feed.scrollHeight;
+    `<div class="ev k-${esc(e.kind)}" data-step="${esc(e.step || '')}"><span class="t">${clock(e.t)}</span><span class="st">${esc(e.step || '')}</span><span class="x">${esc(e.text)}</span></div>`).join(''));
+  if (follow) feed.scrollTop = feed.scrollHeight;
+}
+
+function updateClocks() {
+  document.querySelectorAll('[data-since]').forEach((s) => { s.textContent = dur(since(s.dataset.since)); });
 }
 
 async function tick() {
   try {
     runs = await fetch('/api/runs').then((x) => x.json());
-    $('dot').style.background = 'var(--ok)'; $('live').textContent = 'live';
+    $('dot').classList.remove('off'); $('live').textContent = 'live';
   } catch {
-    $('dot').style.background = 'var(--bad)'; $('live').textContent = 'dashboard stopped';
+    $('dot').classList.add('off'); $('live').textContent = 'dashboard stopped';
     return;
   }
+  const running = runs.filter(live).length;
+  $('counts').textContent = `${runs.length} run${runs.length === 1 ? '' : 's'}${running ? ` · ${running} running` : ''}`;
   if (!selected && runs.length) selected = runs[0].id;
-  // A malformed record must not blank the page: render each part on its own.
+  // Each part renders on its own, and only when its data changed, so scroll positions are never reset.
   for (const part of [renderList, renderDetail, loadEvents]) {
     try { await part(); } catch (e) { console.error('dashboard render', e); }
   }
@@ -217,24 +353,31 @@ async function del(url, question) {
   if (!confirm(question)) return;
   const res = await fetch(url, { method: 'DELETE' }).catch(() => null);
   if (!res || !res.ok) { alert('Could not delete (it may still be running).'); return; }
-  selected = null; feedFor = null; openFile = null; history.replaceState(null, '', location.pathname);
+  selected = null; history.replaceState(null, '', location.pathname);
   await tick();
 }
 
-document.addEventListener('click', async (e) => {
+document.addEventListener('click', (e) => {
   const d = e.target.closest('[data-del]');
-  if (d) return del(`/api/runs/${d.dataset.del}`, 'Delete this pipeline run from the dashboard? The project files are not touched.');
+  if (d) return del(`/api/runs/${d.dataset.del}`, 'Delete this pipeline run from the dashboard? Your project files are not touched.');
   const c = e.target.closest('[data-clear]');
-  if (c) return del(`/api/runs?cwd=${encodeURIComponent(c.dataset.clear)}`, 'Delete every finished run of this project from the dashboard? Running ones are kept. Project files are not touched.');
-  const run = e.target.closest('.run');
-  if (run) { selected = run.dataset.id; openFile = null; location.hash = 'run=' + selected; renderList(); renderDetail(); loadEvents(); return; }
-  const f = e.target.closest('[data-f]');
+  if (c) return del(`/api/runs?cwd=${encodeURIComponent(c.dataset.clear)}`, 'Delete every finished run of this project from the dashboard? Running ones are kept. Your project files are not touched.');
+  const f = e.target.closest('[data-filter]');
   if (f) {
-    if (openFile?.name === f.dataset.f) { openFile = null; $('filebox').innerHTML = ''; return; }
-    showFile(f.dataset.f, await fetch(`/api/runs/${selected}/file/${f.dataset.f}`).then((x) => x.text()));
+    filter = f.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach((b) => b.setAttribute('aria-pressed', String(b === f)));
+    return renderList();
+  }
+  const t = e.target.closest('[data-tab]');
+  if (t) return showTab(t.dataset.tab);
+  const run = e.target.closest('.run');
+  if (run) {
+    selected = run.dataset.id; history.replaceState(null, '', `#run=${selected}`);
+    renderList(); renderDetail(); loadEvents();
   }
 });
-tick(); setInterval(tick, 1500);
+
+tick(); setInterval(tick, 1500); setInterval(updateClocks, 1000);
 </script>
 </body>
 </html>
