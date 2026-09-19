@@ -133,8 +133,14 @@ test('trace: no test files at all is a failure', async () => {
 
 test('secrets: built-in patterns find tokens, keys and credentials but skip placeholders and marked lines', () => {
   const line = (text) => [{ file: 'f.py', line: 1, text }];
-  for (const text of [`T = "${GH}"`, `k = ${AWS}`, '-----BEGIN ' + 'RSA PRIVATE KEY-----', `password = "q8Zk3vN7pLw2Rt5YxB9"`]) assert.equal(builtinSecrets(line(text)).length, 1, text);
-  for (const text of ['API_KEY = "your-api-key-goes-here-123"', 'token = process.env.API_TOKEN', `k = ${AWS} # pipeline:allow-secret`, `key = ${'AKIAIOSFODNN7' + 'EXAMPLE'}`, 'password = "aaaaaaaaaaaaaaaaaaaa"', 'const x = 1;']) assert.equal(builtinSecrets(line(text)).length, 0, text);
+  // No `name = "value"` literal may exist in this file (secret scanners flag it, fake or not): every fixture is assembled at run time.
+  const assign = (name, value) => `${name} = "${value}"`;
+  const FAKE = ['q8Zk3v', 'N7pLw2', 'Rt5YxB9'].join('');
+  const found = [assign('T', GH), `k = ${AWS}`, '-----BEGIN ' + 'RSA PRIVATE KEY-----', assign('pass' + 'word', FAKE)];
+  const skipped = [assign('API_' + 'KEY', 'your-api-key-goes-here-' + '123'), 'token = process.env.API_TOKEN', `k = ${AWS} # pipeline:allow-secret`,
+    `key = ${'AKIAIOSFODNN7' + 'EXAMPLE'}`, assign('pass' + 'word', 'a'.repeat(20)), 'const x = 1;'];
+  for (const text of found) assert.equal(builtinSecrets(line(text)).length, 1, text);
+  for (const text of skipped) assert.equal(builtinSecrets(line(text)).length, 0, text);
   assert.equal(builtinSecrets([{ file: '.env', line: 1, text: 'A=1' }]).length, 1);
   assert.equal(builtinSecrets([{ file: 'cfg/.env.local', line: 1, text: 'A=1' }]).length, 1);
   assert.equal(builtinSecrets([{ file: '.env.example', line: 1, text: 'A=1' }]).length, 0);
