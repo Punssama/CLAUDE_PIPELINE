@@ -152,6 +152,7 @@ When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`
 - test results, Critical review findings, and `plan.md` / `review.md` / test output
 - runs that were killed mid-way are marked `stopped`
 - filters (All / Running / Failed), tabs for Activity and the files, a step filter and a Follow toggle for the live feed
+- a **full-screen reader/editor** for the plan (and read-only for review and test output), plus a banner on runs that wait for your plan review
 - `plan.md` and `review.md` are **rendered as Markdown** (headings, tables, task lists, code, a coloured `VERDICT` badge); tick **Raw** to see the source. Rendering is hardened: raw HTML in the files is shown as text, images are never fetched, only `http(s)` links are clickable, and a Content-Security-Policy blocks foreign scripts and requests
 
 ![Pipeline dashboard](assets/dashboard.png)
@@ -159,6 +160,24 @@ When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`
 It uses the first free port from 3120 up, listens on `127.0.0.1` only (and refuses other host names), and stops by itself when the last Claude Code session closes (a small SessionStart/SessionEnd hook keeps count). Open it any time by asking Claude for the pipeline dashboard.
 
 **History is kept until you delete it.** Every run is saved in `~/.claude-pipeline/runs/` (override with `CLAUDE_PIPELINE_HOME`), so stopping the dashboard, closing Claude or rebooting loses nothing. To tidy up, use **Delete run** on a run, or **Clear finished** next to a project name to remove all its finished runs. Running pipelines cannot be deleted, and deleting only removes the dashboard record: your project files are never touched.
+
+### Review and edit the plan (you are not bound to the AI's plan)
+
+With `pauseAfterPlan: true` (recommended for the first runs and for anything touching auth, payments or data), the pipeline stops after the planner and nothing is built until you say so. Claude summarizes the plan in your session and gives you a link; you can:
+
+| You want to | Do |
+|---|---|
+| **Read** the plan comfortably | Open the link: **full-screen** reader with adjustable text size (A− / A+). Review and test output open the same way |
+| **Change** the plan yourself | **Edit** mode: Markdown source on the left, live preview on the right; `Ctrl+S` saves to `.pipeline/plan.md`, which is what the build reads. **Changes** shows exactly what you changed compared with the plan the AI wrote |
+| Have Claude change it | **Ask Claude for changes…**: describe them in the box; Claude edits the plan and shows it to you again |
+| **Add** instructions from the terminal | Type them in the **Other** field of Claude's question in your CLI or desktop app; they are appended to the plan as `User amendments`, which the builder treats as authoritative |
+| Go ahead / stop | **Approve & build** or **Cancel run** |
+
+Editing warns you when the plan stops mentioning an acceptance criterion (the reviewer still grades against the spec, so keep a task for each, or update `SPEC.md` / `ROADMAP.md`).
+
+**How the browser talks back to your Claude session.** The dashboard only records your decision in `~/.claude-pipeline/runs/`. When you choose "Edit in the browser", Claude starts `pipeline.mjs --wait <run id>` in the background; it exits with your decision as one JSON line (`approve`, `revise` + note, or `cancel`, plus whether the plan changed and the diff), which wakes the session on the **CLI, desktop app or IDE**, and it carries on. The dashboard shows whether a session is waiting; if none is, it shows the command to continue by hand (`node …/pipeline.mjs .pipeline/config.json --from build`). Any other tool with a shell can use the same two pieces: the edited file and `--wait`.
+
+Each run keeps its own copy of the plan, review and test output, so old runs always show what *they* saw; a run that built from a plan you edited is marked, with the diff. The dashboard never launches anything by itself, and edits and decisions are only accepted from the dashboard page itself.
 
 ### Token profiles
 
@@ -177,7 +196,7 @@ Other ways it saves tokens: interactive questions happen once in `/discover` ins
 | Code | Meaning |
 |---|---|
 | 0 | Committed (and pushed if enabled) |
-| 10 | Paused after the plan: read `.pipeline/plan.md`, then continue with `--from build` |
+| 10 | Paused after the plan so you can review or edit it (see above), then continue with `--from build` |
 | 3 | The plan does not cover the milestone's ACs: clarify or split the milestone |
 | 2 | Review or tests still failing: see `.pipeline/review.md`; nothing was committed |
 | 1 | Error: see `.pipeline/logs/` |
@@ -236,7 +255,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.5.3): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.6.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 

@@ -9,13 +9,13 @@
 <style>
 :root {
   --bg: #f5f6f8; --panel: #ffffff; --sunk: #eef0f4; --fg: #1b2130; --muted: #636c80; --line: #e1e4ea;
-  --accent: #3656d0; --ok: #237a38; --bad: #c0262d; --warn: #9a5a00; --run: #1869b8;
+  --accent: #3656d0; --on-accent: #ffffff; --ok: #237a38; --bad: #c0262d; --warn: #9a5a00; --run: #1869b8;
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
   --r: 8px;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #0e1116; --panel: #161a21; --sunk: #1d222b; --fg: #e3e6ed; --muted: #8d95a8; --line: #272d38;
-    --accent: #7f97ff; --ok: #57c96b; --bad: #ff6b6b; --warn: #f0b429; --run: #54a8f0; }
+    --accent: #7f97ff; --on-accent: #0e1116; --ok: #57c96b; --bad: #ff6b6b; --warn: #f0b429; --run: #54a8f0; }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -147,6 +147,64 @@ pre.file { margin: 0; padding: 12px 14px; font: 12px/1.55 var(--mono); white-spa
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
 .md .verdict { display: inline-block; font-weight: 700; padding: 2px 10px; border-radius: 6px; border: 1px solid currentColor; }
 .muted-note { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---- plan review banner + full-screen reader/editor ---- */
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); }
+.banner { margin-top: 12px; display: flex; gap: 12px 20px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
+  padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--r); background: var(--panel); }
+.banner p { margin: 2px 0 6px; color: var(--muted); font-size: 13px; }
+.banner .st { font-size: 13px; }
+.banner details { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.banner details summary { cursor: pointer; }
+.banner code, .doc-alert code { font: 12px var(--mono); background: var(--sunk); padding: 2px 6px; border-radius: 4px; user-select: all; word-break: break-all; }
+.banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.s-resumed { color: var(--muted); }
+.seg:disabled { opacity: .45; cursor: not-allowed; }
+.seg-group { display: flex; gap: 4px; }
+
+dialog#doc { border: 0; padding: 0; margin: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; overflow: hidden;
+  background: var(--bg); color: var(--fg); }
+dialog#doc::backdrop { background: rgba(0, 0, 0, .55); }
+.doc { display: flex; flex-direction: column; height: 100%; }
+.doc-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
+.doc-id { min-width: 0; flex: 1 1 260px; }
+.doc-id h2 { margin: 0; font-size: 16px; }
+#docSub { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-actions { display: flex; align-items: center; gap: 8px; }
+.doc-alert { padding: 8px 16px; font-size: 13px; border-bottom: 1px solid var(--line); background: var(--sunk); flex: none; }
+.doc-alert.warn { border-left: 4px solid var(--warn); } .doc-alert.bad { border-left: 4px solid var(--bad); } .doc-alert.ok { border-left: 4px solid var(--ok); }
+.doc-body { flex: 1; min-height: 0; display: flex; }
+.doc-read { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 28px 20px 64px; }
+.doc-md { font-size: var(--doc-fs, 16px); line-height: 1.7; }
+.doc-read .doc-md { max-width: 78ch; margin: 0 auto; padding: 0; }
+.doc-md h1 { font-size: 1.5em; } .doc-md h2 { font-size: 1.25em; } .doc-md h3 { font-size: 1.1em; }
+.doc-md code, .doc-md pre code, .doc-md th, .doc-md td { font-size: .85em; }
+.doc-edit { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.doc-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.doc-pane + .doc-pane { border-left: 1px solid var(--line); }
+.doc-pane > .md { flex: 1; overflow: auto; padding: 16px 20px 40px; max-width: none; }
+.doc-label { padding: 5px 16px; flex: none; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--sunk); border-bottom: 1px solid var(--line); }
+#docText { flex: 1; width: 100%; min-height: 0; resize: none; border: 0; padding: 16px; font: 13px/1.65 var(--mono); tab-size: 2;
+  background: var(--panel); color: var(--fg); }
+#docText:focus-visible, .doc-read:focus-visible, .doc-diff:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.doc-diff { flex: 1; margin: 0; overflow: auto; padding: 16px 20px 40px; font: 13px/1.6 var(--mono); }
+.dl { display: block; white-space: pre-wrap; word-break: break-word; padding: 0 8px; }
+.dl-add { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.dl-del { background: color-mix(in srgb, var(--bad) 18%, transparent); }
+.dl-hunk { color: var(--muted); margin-top: 10px; }
+.doc-foot { flex: none; border-top: 1px solid var(--line); background: var(--panel); padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; }
+.doc-decide { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.doc-decide .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+.doc-note { display: flex; flex-direction: column; gap: 6px; max-width: 760px; }
+.doc-note label { font-size: 12px; color: var(--muted); }
+.doc-note textarea { width: 100%; padding: 8px 10px; font: 13px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.doc-note .btn { align-self: flex-start; }
+@media (max-width: 900px) {
+  .doc-edit { grid-template-columns: minmax(0, 1fr); }
+  .doc-edit .doc-pane + .doc-pane { display: none; }
+  .doc-read { padding: 20px 16px 48px; }
+}
 .ev { display: grid; grid-template-columns: 62px 58px minmax(0, 1fr); gap: 8px; padding: 3px 12px; border-bottom: 1px solid var(--line); font: 12px/1.5 var(--mono); }
 .ev .t, .ev .st { color: var(--muted); }
 .feed:empty::before { content: "No activity recorded yet."; display: block; padding: 32px; text-align: center; color: var(--muted); font: 13px system-ui, sans-serif; }
@@ -186,6 +244,53 @@ pre.file { margin: 0; padding: 12px 14px; font: 12px/1.55 var(--mono); white-spa
   </aside>
   <section id="detail" aria-live="off"><div class="empty">No runs yet. Start one with <code>/setup-pipeline</code>.</div></section>
 </main>
+<dialog id="doc" aria-labelledby="docTitle">
+  <div class="doc">
+    <header class="doc-bar">
+      <div class="doc-id"><h2 id="docTitle">plan.md</h2><span id="docSub" role="status"></span></div>
+      <div class="seg-group" role="group" aria-label="File">
+        <button class="seg" data-doc-file="plan" aria-pressed="true">Plan</button>
+        <button class="seg" data-doc-file="review" aria-pressed="false">Review</button>
+        <button class="seg" data-doc-file="test-output" aria-pressed="false">Test output</button>
+      </div>
+      <div class="seg-group" role="group" aria-label="View">
+        <button class="seg" data-doc-mode="read" aria-pressed="true">Read</button>
+        <button class="seg" data-doc-mode="edit" aria-pressed="false">Edit</button>
+        <button class="seg" data-doc-mode="diff" aria-pressed="false" title="What you changed compared with the plan the AI wrote">Changes</button>
+      </div>
+      <div class="doc-actions">
+        <div class="seg-group" role="group" aria-label="Text size">
+          <button class="seg" id="docSmaller" aria-label="Smaller text">A−</button>
+          <button class="seg" id="docBigger" aria-label="Larger text">A+</button>
+        </div>
+        <button class="btn" id="docSave" title="Save to .pipeline/plan.md (Ctrl+S)">Save</button>
+        <button class="btn" id="docClose">Close</button>
+      </div>
+    </header>
+    <div class="doc-alert" id="docAlert" role="status" hidden></div>
+    <div class="doc-body">
+      <div class="doc-read" id="docRead" tabindex="0" aria-label="Document"><div class="md doc-md" id="docMd"></div></div>
+      <div class="doc-edit" id="docEdit" hidden>
+        <div class="doc-pane"><label class="doc-label" for="docText">Markdown source</label><textarea id="docText" spellcheck="false"></textarea></div>
+        <div class="doc-pane"><div class="doc-label">Preview</div><div class="md doc-md" id="docPreview"></div></div>
+      </div>
+      <pre class="doc-diff" id="docDiff" tabindex="0" aria-label="Changes" hidden></pre>
+    </div>
+    <footer class="doc-foot" id="docFoot" hidden>
+      <div class="doc-decide">
+        <button class="btn primary" id="docApprove">Approve &amp; build</button>
+        <button class="btn" id="docRevise" aria-controls="docNoteBox">Ask Claude for changes…</button>
+        <button class="btn danger" id="docCancel">Cancel run</button>
+        <span class="hint">Edits are saved to <code>.pipeline/plan.md</code>; the build reads that file.</span>
+      </div>
+      <div class="doc-note" id="docNoteBox" hidden>
+        <label for="docNote">Describe what Claude should change in the plan (it edits the plan and shows it to you again)</label>
+        <textarea id="docNote" rows="3" placeholder="e.g. Also add a --done filter, and drop the README task."></textarea>
+        <button class="btn primary" id="docSendNote">Send to Claude</button>
+      </div>
+    </footer>
+  </div>
+</dialog>
 <script src="/vendor/marked.min.js"></script>
 <script>
 const safeHref = (url) => {
@@ -227,6 +332,8 @@ const when = (iso) => {
 let runs = [], filter = 'all';
 let selected = (location.hash.match(/run=([\w.-]+)/) || [])[1] || null;
 let listSig = '', summarySig = '', shellFor = null, nextEvent = 0, follow = true, tab = 'activity';
+const hashParams = new URLSearchParams(location.hash.slice(1));
+let pendingDoc = hashParams.get('doc') ? { file: hashParams.get('doc'), mode: hashParams.get('mode') || 'read' } : null;
 
 const live = (r) => r.state === 'running';
 const elapsedOf = (r) => live(r) ? null : r.state === 'stopped' ? undefined : Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000);
@@ -286,7 +393,8 @@ function buildShell(r) {
             <option>plan</option><option>build</option><option>review</option><option>commit</option></select>
           <label><input type="checkbox" id="follow" checked> Follow</label>
         </div>
-        <div class="tools" id="fileTools" hidden><label><input type="checkbox" id="raw"> Raw</label><button class="btn" id="reload">Reload</button></div>
+        <div class="tools" id="fileTools" hidden><label><input type="checkbox" id="raw"> Raw</label><button class="btn" id="reload">Reload</button>
+          <button class="btn" id="expand" title="Read (and edit) this file full screen">Full screen</button></div>
       </div>
       <div class="pane feed" id="feed" role="tabpanel" aria-label="Activity"></div>
       <div class="pane" id="filePane" role="tabpanel" hidden><div class="md" id="fileMd"></div><pre class="file" id="fileText" hidden></pre></div>
@@ -301,6 +409,7 @@ function buildShell(r) {
   });
   $('reload').addEventListener('click', () => showTab(tab));
   $('raw').addEventListener('change', () => showTab(tab));
+  $('expand').addEventListener('click', () => openDoc(shellFor, tab));
   showTab(tab);
 }
 
@@ -337,7 +446,8 @@ function renderSummary(r) {
       <div class="where">${esc(r.cwd)} · ${esc(r.branch)}${r.from !== 'plan' ? ` · resumed from ${esc(r.from)}` : ''}</div></div>
       <button class="btn danger" data-del="${esc(r.id)}" ${live(r) ? 'disabled title="A running pipeline cannot be deleted"' : ''}>Delete run</button></div>
     ${r.task ? `<details class="task"><summary title="Show the whole task">${esc(r.task)}</summary></details>` : ''}
-    ${r.message && !live(r) ? `<div class="note s-${r.state}">${esc(r.message)}</div>` : ''}
+    ${r.state === 'paused' ? reviewBanner(r) : r.message && !live(r) ? `<div class="note s-${r.state}">${esc(r.message)}</div>` : ''}
+    ${r.planEdited ? '<div class="acs">You edited the plan before this build; the edited plan is what was built. Open plan.md, then “Changes” to see what you changed.</div>' : ''}
     <div class="track" role="list" aria-label="Steps">${STAGES.map(([k, l]) => {
       const s = stageState(r, k), step = r.steps[k];
       const sub = k === 'test' ? (r.tests.length ? `${r.tests.filter((t) => t.pass).length}/${r.tests.length} pass` : '')
@@ -400,8 +510,12 @@ async function tick() {
   $('counts').textContent = `${runs.length} run${runs.length === 1 ? '' : 's'}${running ? ` · ${running} running` : ''}`;
   if (!selected && runs.length) selected = runs[0].id;
   // Each part renders on its own, and only when its data changed, so scroll positions are never reset.
-  for (const part of [renderList, renderDetail, loadEvents]) {
+  for (const part of [renderList, renderDetail, loadEvents, syncDoc]) {
     try { await part(); } catch (e) { console.error('dashboard render', e); }
+  }
+  if (pendingDoc && runs.some((r) => r.id === selected)) { // a link like #run=<id>&doc=plan&mode=edit opens the full-screen view
+    const p = pendingDoc; pendingDoc = null;
+    await openDoc(selected, p.file, p.mode);
   }
 }
 
@@ -414,6 +528,14 @@ async function del(url, question) {
 }
 
 document.addEventListener('click', (e) => {
+  const dd = e.target.closest('[data-doc]');
+  if (dd) return openDoc(selected, dd.dataset.doc, dd.dataset.mode || 'read');
+  if (e.target.closest('[data-approve]')) return decide(selected, 'approve');
+  const cp = e.target.closest('[data-copy]');
+  if (cp) {
+    navigator.clipboard.writeText(cp.dataset.copy).then(() => { cp.textContent = 'Copied'; }, () => { cp.textContent = 'Copy failed'; });
+    return;
+  }
   const d = e.target.closest('[data-del]');
   if (d) return del(`/api/runs/${d.dataset.del}`, 'Delete this pipeline run from the dashboard? Your project files are not touched.');
   const c = e.target.closest('[data-clear]');
@@ -431,6 +553,178 @@ document.addEventListener('click', (e) => {
     selected = run.dataset.id; history.replaceState(null, '', `#run=${selected}`);
     renderList(); renderDetail(); loadEvents();
   }
+});
+
+// ---- plan review banner (paused runs) ---------------------------------------------------------
+function reviewBanner(r) {
+  if (!r.editable) return '<div class="note s-paused">This plan was never approved, and a newer run of this project exists.</div>';
+  const cmd = r.resumeCmd ? `<details><summary>Continue without a Claude session</summary><p>After saving your edits, run this in a terminal:</p>
+    <code>${esc(r.resumeCmd)}</code> <button class="btn" data-copy="${esc(r.resumeCmd)}">Copy</button></details>` : '';
+  const status = r.decision ? `Decision sent (${esc(r.decision.action)}). ${r.waiting ? 'Your Claude session will pick it up.' : 'No Claude session is waiting for it yet.'}`
+    : r.waiting ? 'Your Claude session is waiting for your decision.'
+    : r.lastDecision ? `Claude picked up your “${esc(r.lastDecision.action)}”.`
+    : 'No Claude session is waiting here: after approving, continue with the command below.';
+  return `<div class="banner" role="region" aria-label="Plan review">
+    <div><strong>Plan ready for your review</strong>
+      <p>Read it full screen, change anything you like, or ask Claude for changes. Only what you approve is built.</p>
+      <div class="st">${status}</div>${cmd}</div>
+    <div class="banner-actions"><button class="btn primary" data-doc="plan" data-mode="edit">Review &amp; edit plan</button>
+      <button class="btn" data-doc="plan" data-mode="read">Read full screen</button>
+      <button class="btn" data-approve>Approve &amp; build</button></div></div>`;
+}
+
+// ---- full-screen reader / editor ---------------------------------------------------------------
+const DOC_FILES = { plan: 'plan.md', review: 'review.md', 'test-output': 'Test output' };
+const doc = { runId: null, file: 'plan', mode: 'read', text: '', saved: '', found: false, notice: null, savedAt: null, diffHtml: '' };
+const docRun = () => runs.find((x) => x.id === doc.runId);
+const dirty = () => $('doc').open && doc.text !== doc.saved;
+const discardOk = () => (!dirty() && !$('docNote').value.trim()) || confirm('Discard your unsaved changes (plan edits or a note you have not sent)?');
+const mdHtml = (t) => window.marked ? renderMarkdown(t) : `<pre class="file">${esc(t)}</pre>`;
+const canEditPlan = () => { const r = docRun(); return !!(r && r.state === 'paused' && r.editable && doc.file === 'plan'); };
+let docFs = 16, previewTimer = 0, alertSig = '';
+try { docFs = Number(localStorage.getItem('docFs')) || 16; } catch {}
+function setDocFs(n) {
+  docFs = Math.max(13, Math.min(24, n)); $('doc').style.setProperty('--doc-fs', `${docFs}px`);
+  try { localStorage.setItem('docFs', String(docFs)); } catch {}
+}
+function alertBox(kind, html) {
+  if (kind + html === alertSig) return; // unchanged: leave the DOM alone so buttons inside keep focus
+  alertSig = kind + html;
+  const a = $('docAlert'); a.hidden = !html; a.className = `doc-alert ${kind}`; a.innerHTML = html;
+}
+function refreshAlert() {
+  if (doc.notice) return alertBox(doc.notice.kind, doc.notice.html);
+  const r = docRun();
+  const gone = r && r.state === 'paused' && doc.file === 'plan' ? (r.acs || []).filter((a) => !new RegExp(a + String.raw`(?!\d)`).test(doc.text)) : [];
+  if (gone.length) return alertBox('warn', `The plan no longer mentions <b>${gone.map(esc).join(', ')}</b>. The reviewer still grades against the spec, so keep a task for each, or change SPEC.md / ROADMAP.md.`);
+  if (doc.mode === 'diff' && dirty()) return alertBox('warn', 'This shows what is saved. Save first to include your latest edits.');
+  alertBox('', '');
+}
+function paintDoc() {
+  $('docRead').hidden = doc.mode !== 'read'; $('docEdit').hidden = doc.mode !== 'edit'; $('docDiff').hidden = doc.mode !== 'diff';
+  document.querySelectorAll('[data-doc-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.docMode === doc.mode)));
+  document.querySelectorAll('[data-doc-file]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.docFile === doc.file)));
+  $('docTitle').textContent = DOC_FILES[doc.file];
+  if (doc.mode === 'read') {
+    $('docMd').innerHTML = !doc.found ? '<div class="muted-note">This file has not been written yet.</div>'
+      : doc.file === 'test-output' ? `<pre class="file">${esc(doc.text)}</pre>` : mdHtml(doc.text);
+  } else if (doc.mode === 'edit') {
+    if ($('docText').value !== doc.text) $('docText').value = doc.text;
+    $('docPreview').innerHTML = mdHtml(doc.text);
+  } else $('docDiff').innerHTML = doc.diffHtml;
+}
+async function loadDoc(file) {
+  doc.file = file; doc.notice = null;
+  const res = await fetch(`/api/runs/${doc.runId}/file/${file}`).catch(() => null);
+  doc.found = !!(res && res.ok);
+  doc.text = doc.found ? await res.text() : ''; doc.saved = doc.text;
+}
+async function loadDiff() {
+  const res = await fetch(`/api/runs/${doc.runId}/plandiff`).then((x) => x.json()).catch(() => null);
+  const d = res ? res.diff : null;
+  doc.diffHtml = d == null ? '<div class="muted-note">There is no original plan to compare with.</div>'
+    : d === '' ? '<div class="muted-note">No changes: this is the plan exactly as the AI wrote it.</div>'
+    : d.split('\n').map((l) => `<span class="dl ${l[0] === '+' ? 'dl-add' : l[0] === '-' ? 'dl-del' : l[0] === '@' ? 'dl-hunk' : ''}">${esc(l)}</span>`).join('');
+}
+async function setDocMode(mode) {
+  doc.notice = null;
+  if (!['read', 'edit', 'diff'].includes(mode) || (mode === 'edit' && !canEditPlan()) || (mode === 'diff' && doc.file !== 'plan')) mode = 'read';
+  doc.mode = mode;
+  if (mode === 'diff') await loadDiff();
+  paintDoc(); syncDoc();
+  requestAnimationFrame(() => $({ read: 'docRead', edit: 'docText', diff: 'docDiff' }[mode]).focus());
+  history.replaceState(null, '', `#run=${doc.runId}&doc=${doc.file}${mode === 'read' ? '' : `&mode=${mode}`}`);
+}
+async function openDoc(runId, file = 'plan', mode = 'read') {
+  if (!runs.some((r) => r.id === runId)) return;
+  doc.runId = runId; doc.savedAt = null;
+  if (!$('doc').open) { $('doc').showModal(); setDocFs(docFs); }
+  await loadDoc(DOC_FILES[file] ? file : 'plan');
+  await setDocMode(mode);
+}
+async function switchDocFile(file) {
+  if (file === doc.file || !discardOk()) return;
+  await loadDoc(file); await setDocMode('read');
+}
+async function saveDoc() {
+  if (!canEditPlan()) return false;
+  const res = await fetch(`/api/runs/${doc.runId}/file/plan`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: doc.text }).catch(() => null);
+  const body = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) { doc.notice = { kind: 'bad', html: esc(body.error || 'Could not save the plan.') }; refreshAlert(); return false; }
+  doc.saved = doc.text; doc.savedAt = Date.now(); doc.notice = null; syncDoc();
+  return true;
+}
+// Sends the decision to the local server; a Claude session (CLI, desktop, IDE) waiting on it is woken and continues.
+async function decide(runId, action, note = '') {
+  const inDoc = $('doc').open && runId === doc.runId;
+  if (inDoc && action !== 'cancel' && dirty() && !(await saveDoc())) return false;
+  const res = await fetch(`/api/runs/${runId}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, note }) }).catch(() => null);
+  const body = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) {
+    const msg = body.error || 'Could not send the decision.';
+    if (inDoc) { doc.notice = { kind: 'bad', html: esc(msg) }; refreshAlert(); } else alert(msg);
+    return false;
+  }
+  if (inDoc) {
+    const cmd = runs.find((r) => r.id === runId)?.resumeCmd;
+    const sent = { approve: 'Approved.', revise: 'Sent.', cancel: 'Cancelled.' }[action];
+    doc.notice = body.waiting
+      ? { kind: 'ok', html: `${sent} ${{ approve: 'Your Claude session will start the build now.', revise: 'Claude will revise the plan and show it to you again.', cancel: 'Claude will stop this run.' }[action]}` }
+      : { kind: 'warn', html: `${sent} No Claude session is waiting for it, so nothing starts by itself.${action === 'approve' && cmd
+        ? ` To build now, run this in a terminal: <code>${esc(cmd)}</code> <button class="btn" data-copy="${esc(cmd)}">Copy</button>` : ' Tell your Claude session to check the plan review.'}` };
+    refreshAlert();
+  }
+  await tick();
+  return true;
+}
+function syncDoc() {
+  if (!$('doc').open) return;
+  const r = docRun();
+  if (!r) { $('doc').close(); return; }
+  const editable = r.state === 'paused' && r.editable, isPlan = doc.file === 'plan';
+  $('docFoot').hidden = !editable;
+  $('docSave').hidden = !(editable && isPlan); $('docSave').disabled = !dirty();
+  document.querySelector('[data-doc-mode="edit"]').disabled = !(editable && isPlan);
+  document.querySelector('[data-doc-mode="diff"]').disabled = !isPlan;
+  if (doc.mode === 'edit' && !(editable && isPlan)) { doc.mode = 'read'; doc.notice = { kind: 'warn', html: 'This plan is read-only now: the run has moved on.' }; paintDoc(); }
+  const state = editable ? 'waiting for your review' : r.state === 'resumed' ? 'the build continued from this plan' : r.state;
+  const pend = r.decision ? ` · decision sent: ${r.decision.action}, waiting for Claude` : editable && r.lastDecision ? ` · Claude picked up “${r.lastDecision.action}”` : '';
+  const save = dirty() ? ' · unsaved changes' : doc.savedAt ? ` · saved ${clock(doc.savedAt)}` : '';
+  const sub = `${r.project} · ${r.branch} · ${state}${pend}${save}`;
+  if ($('docSub').textContent !== sub) $('docSub').textContent = sub;
+  refreshAlert();
+}
+
+$('docClose').onclick = () => { if (discardOk()) $('doc').close(); };
+$('docSave').onclick = saveDoc;
+$('docApprove').onclick = () => decide(doc.runId, 'approve');
+$('docRevise').onclick = () => { const b = $('docNoteBox'); b.hidden = !b.hidden; if (!b.hidden) $('docNote').focus(); };
+$('docSendNote').onclick = async () => {
+  const n = $('docNote').value.trim();
+  if (!n) return $('docNote').focus();
+  if (await decide(doc.runId, 'revise', n)) { $('docNote').value = ''; $('docNoteBox').hidden = true; }
+};
+$('docCancel').onclick = () => { if (confirm('Cancel this run? Nothing will be built from this plan.')) decide(doc.runId, 'cancel'); };
+$('docText').addEventListener('input', () => {
+  doc.text = $('docText').value; doc.notice = null;
+  clearTimeout(previewTimer); previewTimer = setTimeout(() => { $('docPreview').innerHTML = mdHtml(doc.text); }, 150);
+  syncDoc();
+});
+document.querySelectorAll('[data-doc-mode]').forEach((b) => { b.onclick = () => setDocMode(b.dataset.docMode); });
+document.querySelectorAll('[data-doc-file]').forEach((b) => { b.onclick = () => switchDocFile(b.dataset.docFile); });
+$('docSmaller').onclick = () => setDocFs(docFs - 1);
+$('docBigger').onclick = () => setDocFs(docFs + 1);
+$('doc').addEventListener('cancel', (e) => { if (!discardOk()) e.preventDefault(); }); // Esc
+$('doc').addEventListener('close', () => {
+  doc.runId = null; doc.text = doc.saved = ''; doc.notice = null; alertSig = '';
+  $('docNote').value = ''; $('docNoteBox').hidden = true;
+  history.replaceState(null, '', selected ? `#run=${selected}` : location.pathname);
+});
+$('doc').addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (dirty()) saveDoc(); }
+  // Handle Esc ourselves: browsers only allow cancelling a dialog's own Esc handling after real user interaction,
+  // and unsaved edits must never be lost to a stray key press.
+  if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); if (discardOk()) $('doc').close(); }
 });
 
 tick(); setInterval(tick, 1500); setInterval(updateClocks, 1000);

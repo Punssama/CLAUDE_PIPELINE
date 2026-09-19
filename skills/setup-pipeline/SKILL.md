@@ -138,10 +138,31 @@ Then wait for the completion notification and read the rest of the output.
 | Exit | Meaning | You do |
 |---|---|---|
 | 0 | Committed (pushed if enabled) | Phase 5 |
-| 10 | Paused after plan | Show `.pipeline/plan.md` briefly; on approval rerun with `--from build`; on changes, edit plan.md with the user first |
+| 10 | Paused after plan | **Plan review** (below) |
 | 3 | Plan does not cover the milestone's ACs | Show the missing IDs; usually the AC is too big or unclear: fix SPEC/ROADMAP with the user (or split the milestone), commit, rerun |
 | 2 | Review/tests still failing; **nothing committed** | Show the Critical items from `.pipeline/review.md` and the failing test output; offer: fix manually, raise `maxFixLoops`, or rerun `--from build` |
 | 1 | Error | Show the last lines and the newest `.pipeline/logs/*.log`; do not retry blindly |
+
+### Plan review (exit 10)
+The runner stops after the plan so the user can change it before any code is written. The user is not bound to the AI's plan: they may read it and **edit it in the dashboard** (full screen, live preview, send back a decision) or work with you here. Either way `.pipeline/plan.md` on disk is the source of truth and the Build step reads it; a hand edit in any editor works too.
+
+1. Read `.pipeline/plan.md`. Take the run id from the dashboard line the runner printed (`#run=<id>`). The review link is `<dashboard url>/#run=<id>&doc=plan` (add `&mode=edit` to open the editor directly).
+2. If `~/.claude-pipeline/runs/<id>.decision.json` already exists, the user decided in the browser: go to step 5 with its content.
+3. Summarize the plan in at most 6 lines (goal, number of tasks, ACs covered, assumptions) and give the link. Then ONE `AskUserQuestion` (short header): **Approve and build** (Recommended) / **Edit in the browser** / **Show the plan here**. The picker's own "Other" field is where the user can type extra instructions.
+4. Act on the answer:
+   - **Approve** → step 6.
+   - **Edit in the browser** → start the waiter in the background (`run_in_background: true`): `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --wait <id>`. Tell the user: "Edit at <link>, then press Approve & build (or Ask Claude for changes); I continue automatically." End your turn; when the waiter exits you are notified and read its JSON line (step 5).
+   - **Show the plan here** → print plan.md in chat, then ask again (step 3).
+   - **Other (typed text)** → these are amendments. Append them to plan.md under `## User amendments (authoritative)`, one bullet per instruction, in the user's words; show the appended lines; then step 6 unless the text says to wait.
+5. The decision JSON is `{action, note, planChanged, plan, diff}` (from the waiter's output or the file):
+   - `approve` → if `planChanged`, say in one or two lines what the user changed (read `diff`); go to step 6.
+   - `revise` → apply `note` to plan.md yourself: edit in place, keep everything else, add nothing the note does not ask for. Show what changed in at most 6 lines, then repeat step 3 (start a new waiter if they choose the browser again).
+   - `cancel` → build nothing; say so; the `auto/...` branch stays as is (offer to delete it).
+   - `superseded` → the run was continued elsewhere; look for the newer run in `~/.claude-pipeline/runs/` and follow it.
+   - `timeout` → nothing was built; ask what to do.
+6. Build: rerun the same command with `--from build` in the background and share the new run's dashboard link. The runner settles the paused run, snapshots the edited plan and records that the user edited it.
+
+Never overwrite the user's edits to plan.md; when you change it, edit in place.
 
 ## Phase 5 - Merge and report
 - Report: branch, commit hash, test/review rounds, push status.
@@ -155,5 +176,6 @@ Then wait for the completion notification and read the rest of the output.
 - Never edit product code, commit or push yourself before the runner finishes; the pipeline owns those steps. Phase 0 fixes (baseline/wip commits, stash, branch switch, merging a previous run), Phase 5 merges, ROADMAP ticks and setup files (CLAUDE.md trims) are yours, with consent.
 - Never force-push. Never run the pipeline on main/master. Report failures with their real output; never claim success without exit code 0.
 - Resume points: `--from build`, `--from review`, `--from commit` (state lives in `.pipeline/`).
+- `pipeline.mjs --wait <run id> [minutes]` blocks until the user decides in the dashboard and prints the decision as one JSON line (default wait 12 hours). It is how edits made in the browser reach this session on CLI, desktop or IDE; any other tool with a shell can run it too.
 - On Windows the runner allows both `Bash` and `PowerShell` rules (headless sessions may expose either); on macOS/Linux only `Bash`.
 - Run history lives in `~/.claude-pipeline/runs/` (override with `CLAUDE_PIPELINE_HOME`). If the user asks for the dashboard later, run `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --dashboard` to start or find it, and give them the printed link.
