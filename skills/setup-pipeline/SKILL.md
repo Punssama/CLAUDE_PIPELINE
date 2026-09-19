@@ -1,10 +1,10 @@
 ---
 name: setup-pipeline
-description: Build a clear request or the next ROADMAP milestone with an automated 4-step pipeline in the current project folder (local git optional, GitHub never required) - Plan (Opus) -> Build (Sonnet) -> test gate -> Review (read-only) -> Commit (Haiku, no edit rights). Checks the request is ready first (sends vague ideas to /discover), recommends a toolkit (ponytail, agentmemory, agent-skills, superpowers) and a token profile, writes .pipeline/config.json, runs it, then merges the milestone. Use when the user says "setup-pipeline", "run the pipeline", "build the next milestone", "setup-pipeline next", or wants an automated plan-build-review-commit run.
+description: Build a clear request or the next ROADMAP milestone with an automated pipeline in the current project folder (local git optional, GitHub never required) - Plan (Opus, checked by a plan lint) -> Build (Sonnet) -> quality gates (tests, lint, types, secrets, AC traceability, ...) -> Review (read-only) -> Commit (Haiku, no edit rights). Checks the request is ready first (sends vague ideas to /discover), recommends a toolkit (ponytail, agentmemory, agent-skills, superpowers) and a token profile, picks the quality gates, writes .pipeline/config.json, runs it, then merges the milestone. Use when the user says "setup-pipeline", "run the pipeline", "build the next milestone", "setup-pipeline next", or wants an automated plan-build-review-commit run.
 argument-hint: "[clear request] | next"
 ---
 
-Runner: `${CLAUDE_SKILL_DIR}/pipeline.mjs` (Node). One headless `claude -p` per step, with a fixed model and a **tool allowlist that enforces the role**: the planner writes only `.pipeline/plan.md`, the reviewer writes only `.pipeline/review.md` and runs read-only git, the committer has no Edit/Write. Files are the only memory between steps.
+Runner: `${CLAUDE_SKILL_DIR}/pipeline.mjs` (Node). One headless `claude -p` per step, with a fixed model and a **tool allowlist that enforces the role**: the planner writes only `.pipeline/plan.md`, the reviewer writes only `.pipeline/review.md` and runs read-only git, the committer has no Edit/Write. Files are the only memory between steps. Between the steps run two checks that cost no model tokens: a **plan lint** (`planlint.mjs`: the plan must follow `plan-template.md`, every task has Files and Verify, every AC has a task and a test-matrix row) and the **quality gates** (`gates.mjs`, below).
 
 Plugin files are English; talk to the user in the language they write in. Keep each message short.
 
@@ -91,9 +91,20 @@ Token hygiene you apply automatically:
 - `disablePlugins`: every installed plugin the user did not choose (`name@marketplace` from `claude plugin list`; never `claude-pipeline@punssama`), **plus every installed plugin whose `toolkit.mjs --status` entry has `headless: "off"`** (agentmemory, context-mode, mattpocock-skills) even if the user chose it for their own sessions. The runner turns them off for its headless steps only, removing their hooks, injected context and skill listings. Measured: context-mode alone adds about 8.6K input tokens to a headless step; agentmemory is used in this session (Phase 5), not inside the steps.
 - The runner also skips every MCP server in each step (`--strict-mcp-config`): about 5K input tokens saved per step in a measurement. Leave it that way; set `"mcp": true` in the config only if a step must call MCP tools.
 - `CLAUDE.md` over ~150 lines: every step loads it, so offer to trim it (commit before running).
-- No test runner and the change is small: omit `testCmd` and say there is no gate. Otherwise make "set up a minimal test runner" the first item of the task.
+- No test runner yet: the Tests gate is skipped until one exists. Unless the change is tiny, make "set up a minimal test runner" the first item of the task.
+- Quality gates run on this machine and use no model tokens; a failing gate goes back to the builder without a paid review, so gates are the cheapest quality you can buy.
 
-## Phase 3 - Write `.pipeline/config.json`
+## Phase 3 - Quality gates, then `.pipeline/config.json`
+### Quality gates (ask once)
+Gates are CI-style checks the runner executes after every Build and before every Review: **tests, lint, types, build, secrets in the change, "every AC has a test that names it", change size**, and (strict) **dependency vulnerabilities and pre-commit hooks**. A failing *blocking* gate goes straight back to the builder with its exact output, and **no review is paid for until the gates pass**; the reviewer then spends its effort on what tools cannot check (does each test prove its AC, edge cases, security). Advisory gates (size, dependency scan) are reported but never block. Third-party tools (gitleaks, ruff, mypy, eslint, tsc, osv-scanner, trivy, pip-audit, pre-commit) are detected on every run, after the build, and never installed silently: a missing tool means its gate is skipped with an install hint.
+
+1. Look: `node "${CLAUDE_SKILL_DIR}/gates.mjs" --detect standard` shows what would run in this folder now (a brand-new project shows little: gates are detected again after the build). For the stack in SPEC.md or the repo run `node "${CLAUDE_SKILL_DIR}/gates.mjs" --tools <js|py|go|rust>`: it lists the recommended tools, which are installed, and the install command for each missing one.
+2. ONE `AskUserQuestion`: **Quality gates** - **Standard** (Recommended: tests, lint, types, build, secrets, AC traceability, change size) / **Strict** (Standard plus a dependency-vulnerability scan and pre-commit hooks) / **Minimal** (tests, secrets, AC traceability). The picker's own "Other" is for a custom list.
+3. Missing tools: show at most 4 lines in the form "<gate> needs <tool> (install: <command>)", say those gates are skipped until installed, and run an install command only if the user asks for it (show the command first).
+4. Write `"gates"` in the config: `"standard"`, `"strict"`, `"minimal"`, an id list such as `["tests","lint"]`, or an object for anything custom: `{ "preset": "standard", "custom": [{ "id": "e2e", "cmd": "npx playwright test", "timeoutSec": 600 }], "warn": ["types"], "skip": ["build"], "add": ["audit"] }` (`warn` = report but never block, `block` = promote an advisory gate). Gates use the SPEC.md Commands table (Test / Lint / Types / Build rows) before auto-detecting, so fill those rows in for stacks the detector does not know. `testCmd` still works as an override for the Tests gate.
+5. Milestone mode: the **AC traceability** gate fails unless every AC id of the milestone appears in a test file (name, docstring or comment), and the builder is told so. Nothing to do; mention it in one line the first time.
+
+### Write the config
 ```json
 {
   "vcs": "git",
@@ -102,7 +113,7 @@ Token hygiene you apply automatically:
   "task": "<request mode: outcome, scope, non-goals, done criteria; milestone mode: omit>",
   "guidance": "<one line for every step, e.g. 'Ponytail level: full. Terse output. Follow CLAUDE.md.'>",
   "branch": "auto/<m2-short-slug>",
-  "testCmd": "<command, or omit for no gate>",
+  "gates": "standard",
   "pauseAfterPlan": true,
   "maxFixLoops": 2,
   "push": false,
@@ -115,12 +126,12 @@ Token hygiene you apply automatically:
   }
 }
 ```
-- `milestone` (milestone mode only): the runner reads SPEC.md + ROADMAP.md, plans only that milestone, **refuses a plan that does not map every AC of the milestone to a task** (one retry, then exit 3), and has the reviewer grade against those ACs. Take `testCmd` from SPEC.md's Commands table.
+- `milestone` (milestone mode only): the runner reads SPEC.md + ROADMAP.md, plans only that milestone, **refuses a plan the plan lint rejects** (missing sections, a task without Files/Verify, an AC without a task or a test-matrix row; one repair round, then exit 3 or, with `pauseAfterPlan`, the problems are listed in the plan editor), and has the reviewer grade against those ACs.
 - `branch` must be new (never main/master); on a rerun of the same milestone add a suffix. Omit it with `"vcs": "none"`.
 - `"vcs": "none"`: no branches and no commit step; the runner snapshots the folder before building (undo point) and after. Undo the last run with `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json --undo`: it restores every file to the pre-run state, so edits made after the run are lost too; confirm with the user first.
 - Ask the last two with one `AskUserQuestion`: **Pause after the plan?** (Yes recommended for the first milestone and for anything touching auth, payments or data) and **Push?** (No recommended until the first run has been reviewed).
 
-Show a compact summary (mode, milestone and its ACs or the task, tools, skills per step, models, max budget = sum of budgetUsd plus Build + Review per fix loop, branch, test gate). Run only after the user says yes.
+Show a compact summary (mode, milestone and its ACs or the task, tools, skills per step, models, max budget = sum of budgetUsd plus Build + Review per fix loop, branch, quality gates). Run only after the user says yes.
 
 ## Phase 4 - Run
 ```bash
@@ -128,7 +139,7 @@ node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json
 ```
 Use `run_in_background: true` (takes minutes). Do not touch the repo while it runs.
 
-**Send the dashboard link right away.** Within a few seconds the runner prints `[pipeline] dashboard: http://127.0.0.1:<port>/#run=<id>`. Read the background output until that line appears (it is among the first lines) and give the user the link in one line, e.g. "Live progress: <link>". The dashboard is one local page for the whole machine: it lists every pipeline run from every project, shows each step's state, elapsed time, real cost against the cap, test/review rounds, Critical review findings, plan.md/review.md, and a live feed of every tool call. It picks a free port itself (from 3120 up) and stays up while any Claude Code session is open. If no dashboard line appears, the run continues without it; say so and move on.
+**Send the dashboard link right away.** Within a few seconds the runner prints `[pipeline] dashboard: http://127.0.0.1:<port>/#run=<id>`. Read the background output until that line appears (it is among the first lines) and give the user the link in one line, e.g. "Live progress: <link>". The dashboard is one local page for the whole machine: it lists every pipeline run from every project, shows each step's state, elapsed time, real cost against the cap, the quality-gate results of every round, Critical review findings, plan.md/review.md/gate output, and a live feed of every tool call. It picks a free port itself (from 3120 up) and stays up while any Claude Code session is open. If no dashboard line appears, the run continues without it; say so and move on.
 
 Then wait for the completion notification and read the rest of the output.
 
@@ -136,8 +147,8 @@ Then wait for the completion notification and read the rest of the output.
 |---|---|---|
 | 0 | Committed (pushed if enabled) | Phase 5 |
 | 10 | Paused after plan | **Plan review** (below) |
-| 3 | Plan does not cover the milestone's ACs | Show the missing IDs; usually the AC is too big or unclear: fix SPEC/ROADMAP with the user (or split the milestone), commit, rerun |
-| 2 | Review/tests still failing; **nothing committed** | Show the Critical items from `.pipeline/review.md` and the failing test output; offer: fix manually, raise `maxFixLoops`, or rerun `--from build` |
+| 3 | Plan not ready: the plan lint still fails after one repair round (structure, a task without Files/Verify, an AC without a task or a test row) | Show the problems the runner printed; usually an AC is too big or unclear: fix SPEC/ROADMAP with the user (or split the milestone), commit, rerun. With `pauseAfterPlan` the run pauses instead and the editor lists the problems |
+| 2 | Quality gates or review still failing after the fix rounds; **nothing committed** | Show the failing gates from `.pipeline/test-output.txt` (FAIL sections) or the Critical items from `.pipeline/review.md`; offer: fix manually, raise `maxFixLoops`, or rerun `--from build`. If the runner said "no progress", the fixer met the same failure twice: fix that one by hand or change the plan |
 | 1 | Error | Show the last lines and the newest `.pipeline/logs/*.log`; do not retry blindly |
 
 ### Plan review (exit 10)
@@ -145,7 +156,7 @@ The runner stops after the plan so the user can change it before any code is wri
 
 1. Read `.pipeline/plan.md`. Take the run id from the dashboard line the runner printed (`#run=<id>`). The review link is `<dashboard url>/#run=<id>&doc=plan` (add `&mode=edit` to open the editor directly).
 2. If `~/.claude-pipeline/runs/<id>.decision.json` already exists, the user decided in the browser: go to step 5 with its content.
-3. Summarize the plan in at most 6 lines (goal, number of tasks, ACs covered, assumptions) and give the link. Then ONE `AskUserQuestion` (short header): **Approve and build** (Recommended) / **Edit in the browser** / **Show the plan here**. The picker's own "Other" field is where the user can type extra instructions.
+3. Summarize the plan in at most 6 lines (goal, number of tasks, ACs covered, assumptions, and the plan check: if the runner printed problems it could not fix, say how many and that the editor lists them with a jump-to-line button) and give the link. Then ONE `AskUserQuestion` (short header): **Approve and build** (Recommended) / **Edit in the browser** / **Show the plan here**. The picker's own "Other" field is where the user can type extra instructions.
 4. Act on the answer:
    - **Approve** → step 6.
    - **Edit in the browser** → start the waiter in the background (`run_in_background: true`): `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --wait <id>`. Tell the user: "Edit at <link>, then press Approve & build (or Ask Claude for changes); I continue automatically." End your turn; when the waiter exits you are notified and read its JSON line (step 5).
@@ -162,7 +173,7 @@ The runner stops after the plan so the user can change it before any code is wri
 Never overwrite the user's edits to plan.md; when you change it, edit in place.
 
 ## Phase 5 - Merge and report
-- Report: branch, commit hash, test/review rounds, push status.
+- Report: branch, commit hash, gate and review rounds, push status, and any skipped gate with its install hint (so the next run is stricter for free).
 - **Milestone mode**: ask to merge into the main branch. On yes: `git switch <main>`, `git merge --no-ff <auto-branch>`, tick the milestone in ROADMAP.md (`## [ ]` → `## [x]`), commit `docs: complete M<n>`. Push the main branch only if push is enabled, a remote exists and the user confirms. If the user prefers a PR instead (remote exists), push the auto branch and open one with `gh pr create` if `gh` is available.
 - **Request mode**: offer the same merge, or leave the branch for the user to review.
 - **`vcs: "none"`**: nothing to merge. Show the changed-files summary the runner printed and the undo command; in milestone mode tick the milestone in ROADMAP.md directly.

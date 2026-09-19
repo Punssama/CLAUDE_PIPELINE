@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { lintPlan } from './planlint.mjs';
 
 export const HOME = process.env.CLAUDE_PIPELINE_HOME || path.join(os.homedir(), '.claude-pipeline');
 export const RUNS = path.join(HOME, 'runs');
@@ -31,7 +32,6 @@ const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); }
 const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-export const missingACs = (text, acs = []) => acs.filter((a) => !new RegExp(a + String.raw`(?!\d)`).test(text));
 
 // Line diff between the plan the AI wrote (plan.orig.md) and the current plan.md; null when there is nothing to compare.
 export function planDiff(dir) {
@@ -195,8 +195,15 @@ async function serve() {
         if (!text.trim()) return send(res, 400, { error: 'the plan cannot be empty' });
         fs.writeFileSync(planFile + '.tmp', text);
         fs.renameSync(planFile + '.tmp', planFile);
-        return send(res, 200, { ok: true, bytes: Buffer.byteLength(text), missingACs: missingACs(text, run.acs) });
+        const lint = lintPlan(text, { acs: run.acs });
+        const rec = readJson(path.join(RUNS, `${run.id}.json`)); // keep the banner's "N problems" in step with what was just saved
+        if (rec) { rec.planLint = { errors: lint.errors.length, warnings: lint.warnings.length }; fs.writeFileSync(path.join(RUNS, `${run.id}.json.tmp`), JSON.stringify(rec)); fs.renameSync(path.join(RUNS, `${run.id}.json.tmp`), path.join(RUNS, `${run.id}.json`)); }
+        return send(res, 200, { ok: true, bytes: Buffer.byteLength(text), lint });
       }
+    }
+
+    if (req.method === 'POST' && p[3] === 'lint') { // plan lint of the text in the editor (not saved)
+      return send(res, 200, lintPlan(await readBody(req, MAX_PLAN), { acs: run.acs }));
     }
 
     if (!write && p[3] === 'plandiff') {

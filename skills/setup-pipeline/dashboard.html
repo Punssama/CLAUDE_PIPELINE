@@ -114,6 +114,10 @@ th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spa
 td.n { font-variant-numeric: tabular-nums; }
 .crit { margin: 14px 0 0; padding: 10px 12px 10px 28px; border: 1px solid var(--line); border-left: 3px solid var(--bad); border-radius: var(--r); background: var(--panel); font-size: 13px; }
 .crit b { display: block; margin-left: -16px; margin-bottom: 4px; }
+.sec { margin: 18px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.sec small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+td.detail { white-space: normal; overflow-wrap: anywhere; min-width: 220px; max-width: 560px; color: var(--muted); }
+.adv { color: var(--muted); font-size: 11px; margin-left: 4px; }
 
 /* ---- tabs: activity + files ---- */
 .panel { margin-top: 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
@@ -155,6 +159,10 @@ pre.file { margin: 0; padding: 12px 14px; font: 12px/1.55 var(--mono); white-spa
   padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--r); background: var(--panel); }
 .banner p { margin: 2px 0 6px; color: var(--muted); font-size: 13px; }
 .banner .st { font-size: 13px; }
+.banner .st.bad { color: var(--bad); font-weight: 600; }
+.doc-alert ul.lint { margin: 4px 0; padding-left: 20px; }
+.doc-alert ul.lint li { margin: 2px 0; }
+.lint-line { font: 11px var(--mono); border: 1px solid var(--line); background: var(--panel); color: var(--accent); border-radius: 4px; padding: 0 5px; cursor: pointer; }
 .banner details { margin-top: 6px; font-size: 12px; color: var(--muted); }
 .banner details summary { cursor: pointer; }
 .banner code, .doc-alert code { font: 12px var(--mono); background: var(--sunk); padding: 2px 6px; border-radius: 4px; user-select: all; word-break: break-all; }
@@ -213,7 +221,8 @@ dialog#doc::backdrop { background: rgba(0, 0, 0, .55); }
 .ev.k-log .x { color: var(--accent); }
 .feed[data-step] .ev { display: none; }
 .feed[data-step="plan"] .ev[data-step="plan"], .feed[data-step="build"] .ev[data-step="build"],
-.feed[data-step="review"] .ev[data-step="review"], .feed[data-step="commit"] .ev[data-step="commit"] { display: grid; }
+.feed[data-step="review"] .ev[data-step="review"], .feed[data-step="commit"] .ev[data-step="commit"],
+.feed[data-step="gates"] .ev[data-step="gates"] { display: grid; }
 
 @media (max-width: 760px) {
   body { display: block; height: auto; }
@@ -251,7 +260,7 @@ dialog#doc::backdrop { background: rgba(0, 0, 0, .55); }
       <div class="seg-group" role="group" aria-label="File">
         <button class="seg" data-doc-file="plan" aria-pressed="true">Plan</button>
         <button class="seg" data-doc-file="review" aria-pressed="false">Review</button>
-        <button class="seg" data-doc-file="test-output" aria-pressed="false">Test output</button>
+        <button class="seg" data-doc-file="test-output" aria-pressed="false">Gate output</button>
       </div>
       <div class="seg-group" role="group" aria-label="View">
         <button class="seg" data-doc-mode="read" aria-pressed="true">Read</button>
@@ -316,7 +325,7 @@ function renderMarkdown(text) {
   return marked.parse(text).replace(/VERDICT:\s*(PASS|FAIL)/g, (m, v) => `<span class="verdict s-${v === 'PASS' ? 'done' : 'failed'}">VERDICT: ${v}</span>`);
 }
 const inlineMarkdown = (text) => window.marked ? marked.parseInline(text) : esc(text);
-const STAGES = [['plan', 'Plan'], ['build', 'Build'], ['test', 'Test'], ['review', 'Review'], ['commit', 'Commit']];
+const STAGES = [['plan', 'Plan'], ['build', 'Build'], ['test', 'Gates'], ['review', 'Review'], ['commit', 'Commit']];
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = (n) => '$' + (n || 0).toFixed((n || 0) >= 10 ? 1 : 3);
@@ -341,15 +350,41 @@ const elapsedOf = (r) => live(r) ? null : r.state === 'stopped' ? undefined : Ma
 const clockSpan = (iso) => `<span data-since="${esc(iso)}">${dur(since(iso))}</span>`;
 
 function stageState(r, key) {
-  if (key === 'test') {
+  if (key === 'test') { // the quality gates (older records call them tests)
     const last = r.tests[r.tests.length - 1];
-    if (!last) return r.currentStep === 'review' && live(r) ? 'running' : 'pending';
+    if (live(r) && r.currentStep === 'gates') return 'running';
+    if (!last) return 'pending';
     return last.pass ? 'done' : 'failed';
   }
   const st = r.steps[key].state;
   return st === 'running' && !live(r) ? 'failed' : st;
 }
 const label = (r) => live(r) && r.currentStep ? r.currentStep : r.state;
+// Quality gates of the latest round: one row per gate. Colour is never the only signal: the result word is always shown.
+const G_STATE = { pass: 'done', fail: 'failed', timeout: 'failed', error: 'failed', warn: 'paused', skip: 'skipped' };
+const G_WORD = { pass: 'pass', fail: 'FAIL', timeout: 'TIMEOUT', error: 'error', warn: 'warning', skip: 'skipped' };
+function gateSummary(r) { // "5/7 pass" for the last round
+  const g = r.gates?.[r.gates.length - 1];
+  if (!g) return r.tests.length ? `${r.tests.filter((t) => t.pass).length}/${r.tests.length} pass` : '';
+  const ran = g.results.filter((x) => x.status !== 'skip');
+  return `${ran.filter((x) => x.status === 'pass').length}/${ran.length} pass`;
+}
+function gatesPanel(r) {
+  const rounds = r.gates || [];
+  if (!rounds.length) return '';
+  const last = rounds[rounds.length - 1];
+  const hist = rounds.length > 1 ? `<div class="acs">${rounds.map((g) => {
+    const bad = g.results.filter((x) => x.blocking && (x.status === 'fail' || x.status === 'timeout')).length;
+    return `Round ${g.round}: ${bad ? `${bad} blocking failure${bad === 1 ? '' : 's'}` : 'all clear'}`;
+  }).join(' → ')}</div>` : '';
+  const unproven = (x) => x.verified === false && x.status !== 'skip'; // ⓘ: a documented command that has not been verified yet
+  return `<div class="sec">Quality gates<small>round ${last.round}${last.results.some(unproven) ? ' · ⓘ documented command, not yet verified' : ''}</small></div>${hist}
+    <div class="tw"><table><thead><tr><th>Gate</th><th>Result</th><th>Time</th><th>Detail</th></tr></thead><tbody>${last.results.map((x) => `<tr>
+      <td title="${esc(x.cmd || 'built in')}">${esc(x.id)}${x.blocking ? '' : '<span class="adv">advisory</span>'}${unproven(x) ? ' ⓘ' : ''}</td>
+      <td><span class="state s-${G_STATE[x.status] || 'pending'}">${esc(G_WORD[x.status] || x.status)}</span></td>
+      <td class="n">${x.status === 'skip' ? '' : x.ms < 1000 ? '&lt;1s' : dur(Math.round(x.ms / 1000))}</td>
+      <td class="detail">${esc(x.note || x.cmd || '')}</td></tr>`).join('')}</tbody></table></div>`;
+}
 
 // ---- sidebar ---------------------------------------------------------------
 function renderList() {
@@ -387,10 +422,10 @@ function buildShell(r) {
         <button class="tab" role="tab" data-tab="activity">Activity</button>
         <button class="tab" role="tab" data-tab="plan">plan.md</button>
         <button class="tab" role="tab" data-tab="review">review.md</button>
-        <button class="tab" role="tab" data-tab="test-output">Test output</button>
+        <button class="tab" role="tab" data-tab="test-output">Gate output</button>
         <div class="tools" id="feedTools">
           <select id="stepFilter" aria-label="Show steps"><option value="">All steps</option>
-            <option>plan</option><option>build</option><option>review</option><option>commit</option></select>
+            <option>plan</option><option>build</option><option>gates</option><option>review</option><option>commit</option></select>
           <label><input type="checkbox" id="follow" checked> Follow</label>
         </div>
         <div class="tools" id="fileTools" hidden><label><input type="checkbox" id="raw"> Raw</label><button class="btn" id="reload">Reload</button>
@@ -450,7 +485,7 @@ function renderSummary(r) {
     ${r.planEdited ? '<div class="acs">You edited the plan before this build; the edited plan is what was built. Open plan.md, then “Changes” to see what you changed.</div>' : ''}
     <div class="track" role="list" aria-label="Steps">${STAGES.map(([k, l]) => {
       const s = stageState(r, k), step = r.steps[k];
-      const sub = k === 'test' ? (r.tests.length ? `${r.tests.filter((t) => t.pass).length}/${r.tests.length} pass` : '')
+      const sub = k === 'test' ? gateSummary(r)
         : step.state === 'running' && live(r) ? clockSpan(step.startedAt) : step.seconds ? dur(step.seconds) : '';
       return `<div class="stage ${s}" role="listitem" aria-label="${l}: ${s}"><div class="node" aria-hidden="true">${s === 'done' ? '✓' : s === 'failed' ? '✕' : s === 'running' ? '•' : ''}</div>
         <div class="lbl">${l}</div><div class="sm">${k === 'test' ? esc(sub) : sub}</div></div>`;
@@ -471,6 +506,7 @@ function renderSummary(r) {
         <td class="n">${money(s.costUsd)} / ${money(s.budgetUsd)}</td></tr>`;
     }).join('')}
     </tbody></table></div>
+    ${gatesPanel(r)}
     ${lastReview && !lastReview.pass && lastReview.critical.length ? `<div class="crit"><b>Critical review findings (round ${lastReview.round})</b>
       <ul>${lastReview.critical.map((c) => `<li>${inlineMarkdown(c.replace(/^\s*(?:[-*]|\d+\.)\s*/, ''))}</li>`).join('')}</ul></div>` : ''}`;
 }
@@ -528,6 +564,8 @@ async function del(url, question) {
 }
 
 document.addEventListener('click', (e) => {
+  const ln = e.target.closest('[data-line]');
+  if (ln) return gotoLine(Number(ln.dataset.line));
   const dd = e.target.closest('[data-doc]');
   if (dd) return openDoc(selected, dd.dataset.doc, dd.dataset.mode || 'read');
   if (e.target.closest('[data-approve]')) return decide(selected, 'approve');
@@ -564,18 +602,21 @@ function reviewBanner(r) {
     : r.waiting ? 'Your Claude session is waiting for your decision.'
     : r.lastDecision ? `Claude picked up your “${esc(r.lastDecision.action)}”.`
     : 'No Claude session is waiting here: after approving, continue with the command below.';
+  const pl = r.planLint, check = !pl ? '' : pl.errors
+    ? `<div class="st bad">Plan check: ${pl.errors} problem${pl.errors === 1 ? '' : 's'} to fix before building (listed in the editor).</div>`
+    : `<div class="st">Plan check passed${pl.warnings ? ` · ${pl.warnings} warning${pl.warnings === 1 ? '' : 's'}` : ''}.</div>`;
   return `<div class="banner" role="region" aria-label="Plan review">
     <div><strong>Plan ready for your review</strong>
       <p>Read it full screen, change anything you like, or ask Claude for changes. Only what you approve is built.</p>
-      <div class="st">${status}</div>${cmd}</div>
+      ${check}<div class="st">${status}</div>${cmd}</div>
     <div class="banner-actions"><button class="btn primary" data-doc="plan" data-mode="edit">Review &amp; edit plan</button>
       <button class="btn" data-doc="plan" data-mode="read">Read full screen</button>
       <button class="btn" data-approve>Approve &amp; build</button></div></div>`;
 }
 
 // ---- full-screen reader / editor ---------------------------------------------------------------
-const DOC_FILES = { plan: 'plan.md', review: 'review.md', 'test-output': 'Test output' };
-const doc = { runId: null, file: 'plan', mode: 'read', text: '', saved: '', found: false, notice: null, savedAt: null, diffHtml: '' };
+const DOC_FILES = { plan: 'plan.md', review: 'review.md', 'test-output': 'Gate output' };
+const doc = { runId: null, file: 'plan', mode: 'read', text: '', saved: '', found: false, notice: null, savedAt: null, diffHtml: '', lint: null };
 const docRun = () => runs.find((x) => x.id === doc.runId);
 const dirty = () => $('doc').open && doc.text !== doc.saved;
 const discardOk = () => (!dirty() && !$('docNote').value.trim()) || confirm('Discard your unsaved changes (plan edits or a note you have not sent)?');
@@ -592,13 +633,30 @@ function alertBox(kind, html) {
   alertSig = kind + html;
   const a = $('docAlert'); a.hidden = !html; a.className = `doc-alert ${kind}`; a.innerHTML = html;
 }
+// The plan check (planlint.mjs, run by the server on the text in the editor): what the builder would trip over.
+const lintItem = (x) => `<li>${x.line ? `<button class="lint-line" data-line="${x.line}" title="Jump to this line">line ${x.line}</button> ` : ''}${esc(x.msg)}</li>`;
 function refreshAlert() {
   if (doc.notice) return alertBox(doc.notice.kind, doc.notice.html);
-  const r = docRun();
-  const gone = r && r.state === 'paused' && doc.file === 'plan' ? (r.acs || []).filter((a) => !new RegExp(a + String.raw`(?!\d)`).test(doc.text)) : [];
-  if (gone.length) return alertBox('warn', `The plan no longer mentions <b>${gone.map(esc).join(', ')}</b>. The reviewer still grades against the spec, so keep a task for each, or change SPEC.md / ROADMAP.md.`);
   if (doc.mode === 'diff' && dirty()) return alertBox('warn', 'This shows what is saved. Save first to include your latest edits.');
+  const errs = doc.lint?.errors || [], warns = doc.lint?.warnings || [];
+  if (errs.length) return alertBox('bad', `<b>Plan check: ${errs.length} problem${errs.length === 1 ? '' : 's'}</b><ul class="lint">${errs.slice(0, 6).map(lintItem).join('')}</ul>${errs.length > 6 ? `…and ${errs.length - 6} more. ` : ''}The builder follows the plan literally, so fix these first (you can still approve as it is).`);
+  if (warns.length) return alertBox('warn', `<b>Plan check: ${warns.length} warning${warns.length === 1 ? '' : 's'}</b><ul class="lint">${warns.slice(0, 4).map(lintItem).join('')}</ul>${warns.length > 4 ? `…and ${warns.length - 4} more.` : ''}`);
   alertBox('', '');
+}
+let lintTimer = 0, lintSeq = 0;
+async function loadLint() { // only for a plan that is still waiting for review
+  const seq = ++lintSeq;
+  if (!canEditPlan()) { doc.lint = null; return refreshAlert(); }
+  const res = await fetch(`/api/runs/${doc.runId}/lint`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: doc.text }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+  if (seq !== lintSeq) return; // a newer check superseded this one
+  doc.lint = res; refreshAlert();
+}
+function gotoLine(n) { // select that line in the editor
+  if (doc.mode !== 'edit') { if (canEditPlan()) setDocMode('edit').then(() => gotoLine(n)); return; }
+  const ta = $('docText'), lines = ta.value.split('\n');
+  let start = 0; for (let i = 0; i < n - 1 && i < lines.length; i++) start += lines[i].length + 1;
+  ta.focus(); ta.setSelectionRange(start, start + (lines[n - 1] || '').length);
+  ta.scrollTop = Math.max(0, (n - 3) * (parseFloat(getComputedStyle(ta).lineHeight) || 22));
 }
 function paintDoc() {
   $('docRead').hidden = doc.mode !== 'read'; $('docEdit').hidden = doc.mode !== 'edit'; $('docDiff').hidden = doc.mode !== 'diff';
@@ -614,7 +672,7 @@ function paintDoc() {
   } else $('docDiff').innerHTML = doc.diffHtml;
 }
 async function loadDoc(file) {
-  doc.file = file; doc.notice = null;
+  doc.file = file; doc.notice = null; doc.lint = null;
   const res = await fetch(`/api/runs/${doc.runId}/file/${file}`).catch(() => null);
   doc.found = !!(res && res.ok);
   doc.text = doc.found ? await res.text() : ''; doc.saved = doc.text;
@@ -641,17 +699,19 @@ async function openDoc(runId, file = 'plan', mode = 'read') {
   if (!$('doc').open) { $('doc').showModal(); setDocFs(docFs); }
   await loadDoc(DOC_FILES[file] ? file : 'plan');
   await setDocMode(mode);
+  loadLint();
 }
 async function switchDocFile(file) {
   if (file === doc.file || !discardOk()) return;
   await loadDoc(file); await setDocMode('read');
+  loadLint();
 }
 async function saveDoc() {
   if (!canEditPlan()) return false;
   const res = await fetch(`/api/runs/${doc.runId}/file/plan`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: doc.text }).catch(() => null);
   const body = res ? await res.json().catch(() => ({})) : {};
   if (!res || !res.ok) { doc.notice = { kind: 'bad', html: esc(body.error || 'Could not save the plan.') }; refreshAlert(); return false; }
-  doc.saved = doc.text; doc.savedAt = Date.now(); doc.notice = null; syncDoc();
+  doc.saved = doc.text; doc.savedAt = Date.now(); doc.notice = null; doc.lint = body.lint || doc.lint; syncDoc();
   return true;
 }
 // Sends the decision to the local server; a Claude session (CLI, desktop, IDE) waiting on it is woken and continues.
@@ -708,6 +768,7 @@ $('docCancel').onclick = () => { if (confirm('Cancel this run? Nothing will be b
 $('docText').addEventListener('input', () => {
   doc.text = $('docText').value; doc.notice = null;
   clearTimeout(previewTimer); previewTimer = setTimeout(() => { $('docPreview').innerHTML = mdHtml(doc.text); }, 150);
+  clearTimeout(lintTimer); lintTimer = setTimeout(loadLint, 500);
   syncDoc();
 });
 document.querySelectorAll('[data-doc-mode]').forEach((b) => { b.onclick = () => setDocMode(b.dataset.docMode); });
@@ -716,7 +777,7 @@ $('docSmaller').onclick = () => setDocFs(docFs - 1);
 $('docBigger').onclick = () => setDocFs(docFs + 1);
 $('doc').addEventListener('cancel', (e) => { if (!discardOk()) e.preventDefault(); }); // Esc
 $('doc').addEventListener('close', () => {
-  doc.runId = null; doc.text = doc.saved = ''; doc.notice = null; alertSig = '';
+  doc.runId = null; doc.text = doc.saved = ''; doc.notice = null; doc.lint = null; lintSeq++; clearTimeout(lintTimer); alertSig = '';
   $('docNote').value = ''; $('docNoteBox').hidden = true;
   history.replaceState(null, '', selected ? `#run=${selected}` : location.pathname);
 });

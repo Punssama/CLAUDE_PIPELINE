@@ -1,13 +1,20 @@
 #!/usr/bin/env node
-// Plan (Opus) -> Build (Sonnet) -> [test gate -> Review (Sonnet, read-only)] x N -> Commit+push (Haiku, no edit).
+// Plan (Opus) -> Build (Sonnet) -> [quality gates -> Review (Sonnet, read-only)] x N -> Commit+push (Haiku, no edit).
 // Usage: node pipeline.mjs .pipeline/config.json [--from plan|build|review|commit]   |   node pipeline.mjs --dashboard
-// Exit: 0 done | 10 paused after plan | 1 error | 2 review still failing (nothing committed) | 3 plan misses milestone ACs
-// Milestone mode (cfg.milestone = 'M2'): reads SPEC.md + ROADMAP.md at the repo root and gates the plan on the milestone's AC IDs.
+// Exit: 0 done | 10 paused after plan | 1 error | 2 gates or review still failing (nothing committed) | 3 plan not ready (plan lint errors)
+// Milestone mode (cfg.milestone = 'M2'): reads SPEC.md + ROADMAP.md at the repo root and holds the plan and the tests to the milestone's AC IDs.
+// Quality gates (cfg.gates, see gates.mjs) run every round before the review; a blocking failure goes straight back to the builder.
 // Every run is recorded in ~/.claude-pipeline/runs and shown live by the machine-wide dashboard (dashboard.mjs).
+// CLAUDE_PIPELINE_CLAUDE='["node","fake.mjs"]' replaces the claude executable (used by this plugin's own tests).
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ensureDashboard, planDiff, missingACs, RUNS } from './dashboard.mjs';
+import { fileURLToPath } from 'node:url';
+import { ensureDashboard, planDiff, RUNS } from './dashboard.mjs';
+import { lintPlan, formatIssues } from './planlint.mjs';
+import { planGates, gateIds, runGates, blockingFailed, summarize, formatReport } from './gates.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 if (process.argv[2] === '--dashboard') { // just start/find the dashboard and print its link
   const u = await ensureDashboard();
@@ -95,7 +102,7 @@ const status = {
   startedAt: new Date().toISOString(), updatedAt: null, currentStep: null, round: 0, totalCostUsd: 0,
   maxFixLoops: cfg.maxFixLoops ?? 2,
   steps: Object.fromEntries(ORDER.map((s) => [s, { state: 'pending', model: cfg.steps[s]?.model, budgetUsd: cfg.steps[s]?.budgetUsd ?? 3, costUsd: 0, runs: 0 }])),
-  tests: [], reviews: [],
+  tests: [], reviews: [], gates: [], planLint: null,
 };
 const STATUS = path.join(RUNS, `${status.id}.json`);
 const EVENTS = path.join(RUNS, `${status.id}.events.jsonl`);
@@ -119,7 +126,7 @@ function markResumed() {
 const say = (m) => { console.log(`[pipeline] ${m}`); event({ kind: 'log', step: status.currentStep, text: m }); };
 const die = (m, code = 1) => {
   status.state = code === 10 ? 'paused' : 'failed'; status.exitCode = code; status.message = m;
-  if (status.currentStep && status.steps[status.currentStep].state === 'running') status.steps[status.currentStep].state = 'failed';
+  if (status.steps[status.currentStep]?.state === 'running') status.steps[status.currentStep].state = 'failed';
   save(); say(m); process.exit(code);
 };
 
@@ -134,6 +141,10 @@ function milestoneACs() {
 }
 const ACS = M ? milestoneACs() : [];
 status.acs = ACS;
+try { planGates(cfg, process.cwd(), { acs: ACS }); } catch (e) { die(`bad gates config: ${e.message}`); } // fail before any model is paid for
+// Claude Code treats everything under a .claude folder as its own config and refuses headless writes there ("sensitive file"),
+// so no step could write plan.md or review.md: say so now instead of after a paid planner run.
+if (/[\\/]\.claude([\\/]|$)/.test(process.cwd())) die('this project is inside a ".claude" folder, which Claude Code protects from headless file writes; move the project elsewhere (for example under Documents) and run again');
 
 // Windows headless sessions may expose PowerShell instead of Bash: allow both rule forms there.
 const sh = (x) => !WIN ? x : x.split(',').flatMap((t) => t.startsWith('Bash') ? [t, t.replace('Bash', 'PowerShell')] : [t]).join(',');
@@ -148,6 +159,7 @@ function brief(name, input = {}) {
 
 // Headless steps are marked, so plugin hooks meant for people (like the one-time /toolkit hint) stay silent inside them.
 const STEP_ENV = { ...process.env, CLAUDE_PIPELINE_HEADLESS: '1' };
+const CLAUDE = process.env.CLAUDE_PIPELINE_CLAUDE ? JSON.parse(process.env.CLAUDE_PIPELINE_CLAUDE) : ['claude'];
 // Runs claude headless with stream-json so every tool call reaches the dashboard as it happens.
 // Native installer gives claude(.exe); npm on Windows gives claude.cmd, which needs a shell.
 function claude(step, args, input) {
@@ -177,7 +189,7 @@ function claude(step, args, input) {
       child.on('close', (code) => resolve({ status: code, stdout: raw, stderr: err, result }));
       child.stdin.end(input);
     };
-    start('claude', args, {});
+    start(CLAUDE[0], [...CLAUDE.slice(1), ...args], {});
   });
 }
 
@@ -210,35 +222,54 @@ async function run(step, prompt, tools, allowed, disallowed = '') {
   return r.result?.result || '';
 }
 
-function testGate() {
-  if (!cfg.testCmd) return true;
-  const r = spawnSync(cfg.testCmd, { shell: true, encoding: 'utf8' });
-  fs.writeFileSync(`${D}/test-output.txt`, (r.stdout || '') + (r.stderr || '')); snap('test');
-  status.tests.push({ round: status.round, pass: r.status === 0 }); save();
-  say(`tests: ${r.status === 0 ? 'PASS' : 'FAIL'} (${cfg.testCmd})`);
-  return r.status === 0;
+// Quality gates (gates.mjs): every gate runs every round, so the builder gets all failures at once. They are detected here, after
+// the build, because the build may just have added package.json, a lint config or the tests themselves.
+async function gateStage() {
+  const { gates, ctx } = planGates(cfg, process.cwd(), { acs: ACS });
+  if (!gates.length) { fs.writeFileSync(`${D}/test-output.txt`, '# Quality gates\nnone configured\n'); snap('test'); return { results: [], blocked: [] }; }
+  status.currentStep = 'gates'; save();
+  say(`gates (round ${status.round}): ${gates.map((g) => g.id).join(', ')}`);
+  const results = await runGates(gates, ctx, (r) => say(`gate ${r.id}: ${r.status.toUpperCase()}${r.status === 'pass' || !r.note ? '' : ` - ${r.note.slice(0, 120)}`} (${(r.ms / 1000).toFixed(1)}s)`));
+  fs.writeFileSync(`${D}/test-output.txt`, formatReport(results, status.round)); snap('test');
+  const blocked = blockingFailed(results);
+  status.gates.push({ round: status.round, results: results.map(({ out, ...r }) => r) });
+  status.tests.push({ round: status.round, pass: !blocked.length });
+  say(`gates: ${summarize(results)}`);
+  status.currentStep = null; save();
+  return { results, blocked };
 }
 
-async function build(fix) {
+// fix = false: first build. fix + failing: quality gates failed (the review is skipped until they pass). fix alone: review findings.
+async function build(fix, failing = []) {
   const base = `Read ${D}/plan.md (the user may have edited it or added a "User amendments" section: those are authoritative, follow them and never revert them).`;
-  const p = fix
-    ? `${base} Then read ${D}/review.md and ${D}/test-output.txt. Fix ONLY the Critical review findings and failing tests. Do not expand scope. Do not commit or push.`
-    : `${base}${M ? ` SPEC.md is the product spec; build only milestone ${M}.` : ''} Implement every task in it, tests first. If the project has no .gitignore covering generated files (caches, build output, dependencies), add one. Run the test command from the plan. Do not commit or push. Do not ask questions; state assumptions in your final message.`;
+  const gl = gateIds(cfg);
+  const p = !fix
+    ? `${base}${M ? ` SPEC.md is the product spec; build only milestone ${M}.` : ''} Implement every task in it, tests first.${M ? ` Every acceptance criterion (${ACS.join(', ')}) needs at least one test whose name, docstring or comment contains its ID literally, e.g. a comment "# AC-2" or a test title "AC-2 rejects empty input": an automated check enforces this.` : ''} If the project has no .gitignore covering generated files (caches, build output, dependencies), add one. ${gl.length ? `Automated quality gates run when you finish (${gl.join(', ')}): first run the plan's test command and the project's own lint, type and build commands, and fix what they report.` : "Run the test command from the plan."} Never put real credentials in code or tests. Do not commit or push. Do not ask questions; state assumptions in your final message.`
+    : failing.length
+      ? `${base} Then read ${D}/test-output.txt: these automated quality gates failed: ${failing.join(', ')}. Fix exactly what their output reports, in the code itself. Never silence a check: no noqa / eslint-disable / @ts-ignore, no skipped or deleted tests, no loosened assertions, and do not edit lint, type or test configuration to make a gate pass unless the plan says so. If a rule is genuinely wrong for this code, leave it and say so in your final message. Ignore WARN and SKIP sections. Do not expand scope. Do not commit or push.`
+      : `${base} Then read ${D}/review.md. Fix ONLY the Critical review findings. Do not expand scope. Never weaken tests or silence checks to pass. Do not commit or push.`;
   await run('build', p, 'Read,Grep,Glob,Skill,Write,Edit,Bash', 'Read,Grep,Glob,Skill,Write,Edit,Bash',
     'Bash(git push:*),Bash(git commit:*),Bash(git reset:*),Bash(git checkout:*),Bash(git switch:*)');
 }
 
 async function review() {
   git('add', '-N', '.'); // make new files visible to `git diff`
+  fs.rmSync(`${D}/review.md`, { force: true }); // a review left by an earlier run must never be mistaken for this one
   await run('review',
     `Review the uncommitted changes (git diff HEAD, git status) against ${D}/plan.md (the user may have edited it; the current file is the intent). You are READ-ONLY: never modify code; the only file you may write is ${D}/review.md.
-Write ${D}/review.md with sections Critical / Important / Suggestion (each item: file:line, problem, fix suggestion). Critical = wrong behaviour, security hole, missing/failing tests, plan not met.${M ? `
+${gateIds(cfg).length ? `The automated quality gates already ran and every blocking one passed (${D}/test-output.txt; WARN lines are advisory, mention them only if they matter here). Do not repeat that work: no style or type nitpicks. ` : ''}Spend your effort on what tools cannot check:
+1. Proof: for each requirement${M ? ' and acceptance criterion' : ''}, find the test that proves it and ask "would this test fail if the feature were broken?". A test that asserts nothing meaningful, mocks the code under test, or only checks that nothing crashes is a Critical finding.
+2. Behaviour: wrong logic, unhandled edge cases (empty, null, huge, duplicate, concurrent input), error paths, off-by-one, leaked resources.
+3. Security: untrusted input reaching a shell, SQL, file path, HTML or deserializer; missing authorization; secrets; unsafe defaults.
+4. The plan: tasks not done, scope creep, dead code.
+Write ${D}/review.md with sections Critical / Important / Suggestion (each item: file:line, problem, fix suggestion). Critical = wrong behaviour, security hole, missing or meaningless tests, plan not met.${M ? `
 Also check against SPEC.md: every acceptance criterion of milestone ${M} (${ACS.join(', ')}) must be met; an unmet one is Critical. Work belonging to later milestones is not required.` : ''}
 Ignore generated artifacts (caches, build output). Important/Suggestion items NEVER cause a FAIL.
 The LAST line must be exactly "VERDICT: PASS" (zero Critical items) or "VERDICT: FAIL" (at least one Critical item).`,
     'Read,Grep,Glob,Skill,Write,Bash',
     `Read,Grep,Glob,Skill,Edit(${D}/review.md),Bash(git diff:*),Bash(git status:*),Bash(git log:*)`);
   const txt = fs.existsSync(`${D}/review.md`) ? fs.readFileSync(`${D}/review.md`, 'utf8') : '';
+  if (!txt.trim()) die(`review step did not write ${D}/review.md. See ${D}/logs/`);
   // Pass if the model says PASS, or if its Critical section lists nothing (guards against a nitpicky FAIL).
   const lines = txt.split('\n');
   const s = lines.findIndex((l) => /^##\s*Critical/i.test(l));
@@ -256,7 +287,7 @@ const idx = ORDER.indexOf(from);
 if (idx < 0) die(`bad --from ${from}`);
 ORDER.slice(0, idx).forEach((s) => { status.steps[s].state = 'skipped'; });
 save();
-const url = await ensureDashboard();
+const url = cfg.dashboard === false || process.env.CLAUDE_PIPELINE_NO_DASHBOARD ? null : await ensureDashboard(); // off for CI and for tests
 if (url) say(`dashboard: ${url}/#run=${status.id}`);
 
 if (from === 'build') { // continuing after plan review: the plan on disk may have been edited by the user
@@ -267,8 +298,11 @@ if (from === 'build') { // continuing after plan review: the plan on disk may ha
     fs.writeFileSync(path.join(RUNS, `${status.id}.plan.diff`), diff);
     say('plan.md was edited after the planner wrote it; the edited plan is what gets built');
   }
-  const gone = fs.existsSync(`${D}/plan.md`) ? missingACs(fs.readFileSync(`${D}/plan.md`, 'utf8'), ACS) : [];
-  if (gone.length) say(`warning: the plan no longer mentions ${gone.join(', ')}; the reviewer still grades against the spec`);
+  if (fs.existsSync(`${D}/plan.md`)) { // the user approved this plan: problems only warn
+    const lint = lintPlan(fs.readFileSync(`${D}/plan.md`, 'utf8'), { acs: ACS });
+    status.planLint = { errors: lint.errors.length, warnings: lint.warnings.length };
+    if (lint.errors.length) say(`warning: the plan has ${lint.errors.length} unresolved problem(s), building it anyway because you approved it: ${formatIssues(lint.errors).slice(0, 3).join('; ')}`);
+  }
   snap('plan');
 }
 
@@ -286,26 +320,37 @@ if (from === 'plan') {
     say(`branch ${cfg.branch} (from ${cur})`);
   }
   fs.mkdirSync(D, { recursive: true });
-  const planPrompt = (extra = '') => `${cfg.project ? `Project context:\n${cfg.project}\n\n` : ''}${M ? `Read SPEC.md (the product spec) and ROADMAP.md. Plan ONLY milestone ${M}; later milestones are out of scope.
-Acceptance criteria for ${M}: ${ACS.join(', ')}. In Tasks, write each of these AC IDs next to the task(s) that satisfy it.\n\n` : ''}Task: ${cfg.task || `Implement milestone ${M} of ROADMAP.md.`}
-
-Explore the repo, then write ${D}/plan.md — the ONLY file you may create. Sections: Goal, Non-goals, Assumptions, Tasks (each: files touched, acceptance criteria, how to verify), Test command${cfg.testCmd ? ` (use: ${cfg.testCmd})` : ''}.
-You are non-interactive: do not ask questions, record assumptions instead. Keep it short and self-contained: a different model will implement it without seeing this conversation.${extra}`;
+  for (const f of ['plan.md', 'plan.orig.md', 'review.md', 'test-output.txt']) fs.rmSync(`${D}/${f}`, { force: true }); // nothing from an earlier run may leak into this one
+  const head = () => `${cfg.project ? `Project context:\n${cfg.project}\n\n` : ''}${M ? `Read SPEC.md (the product spec) and ROADMAP.md. Plan ONLY milestone ${M}; later milestones are out of scope.
+Acceptance criteria for ${M}: ${ACS.join(', ')}. Put each of these AC IDs in the heading of the task(s) that satisfy it and in a Test matrix row.\n\n` : ''}Task: ${cfg.task || `Implement milestone ${M} of ROADMAP.md.`}`;
+  const structure = () => `in exactly this structure: keep every section heading, replace every {{placeholder}}, add one "### T<n>" task per unit of work.
+${fs.readFileSync(path.join(HERE, 'plan-template.md'), 'utf8')}
+The Test matrix names, for each ${M ? 'acceptance criterion' : 'requirement'}, the test that proves it and the behaviour it asserts; tests are written before the code they cover. Verify lines are exact commands${cfg.testCmd ? `; the test command is: ${cfg.testCmd}` : ''}.
+You are non-interactive: do not ask questions, record assumptions instead. Keep it short and self-contained: a different model will implement it without seeing this conversation.`;
+  const planPrompt = () => `${head()}\n\nExplore the repo, then write ${D}/plan.md (the ONLY file you may create) ${structure()}`;
+  const repairPrompt = (issues) => `${head()}\n\n${D}/plan.md already exists but fails these automated checks:\n${formatIssues(issues).map((x) => `- ${x}`).join('\n')}\nEdit ${D}/plan.md in place to fix exactly these problems. Do not explore the repository again and do not rewrite what is already fine. The plan must follow this structure: ${structure()}`;
   const planTools = ['Read,Grep,Glob,Skill,Write', `Read,Grep,Glob,Skill,Edit(${D}/plan.md)`];
   await run('plan', planPrompt(), ...planTools);
   if (!fs.existsSync(`${D}/plan.md`)) die('plan step did not produce plan.md');
-  // Completeness gate: every AC of the milestone must be mapped to a task (one retry).
-  const missing = () => ACS.filter((a) => !new RegExp(a + String.raw`(?!\d)`).test(fs.readFileSync(`${D}/plan.md`, 'utf8')));
-  if (missing().length) {
-    say(`plan misses ${missing().join(', ')}; asking planner to complete it`);
-    await run('plan', planPrompt(`\n\n${D}/plan.md already exists but does not cover ${missing().join(', ')}. Update it so every listed AC ID is mapped to a task.`), ...planTools);
-    if (missing().length) die(`plan still does not cover ${missing().join(', ')}. See ${D}/plan.md`, 3);
+  // Plan lint (planlint.mjs): a plan the builder cannot follow is cheaper to fix now than after a build (one repair round).
+  const lintNow = () => lintPlan(fs.readFileSync(`${D}/plan.md`, 'utf8'), { acs: ACS });
+  let lint = lintNow();
+  if (lint.errors.length) {
+    say(`plan check: ${lint.errors.length} problem(s), asking the planner to fix them:\n${formatIssues(lint.errors).map((x) => `  - ${x}`).join('\n')}`);
+    await run('plan', repairPrompt(lint.errors), ...planTools);
+    lint = lintNow();
+  }
+  status.planLint = { errors: lint.errors.length, warnings: lint.warnings.length };
+  if (lint.warnings.length) say(`plan check: ${lint.warnings.length} warning(s):\n${formatIssues(lint.warnings).slice(0, 5).map((x) => `  - ${x}`).join('\n')}`);
+  if (lint.errors.length && !cfg.pauseAfterPlan) {
+    die(`plan is not ready: ${formatIssues(lint.errors).slice(0, 3).join('; ')}${lint.errors.length > 3 ? ` (+${lint.errors.length - 3} more)` : ''}. See ${D}/plan.md`, 3);
   }
   fs.copyFileSync(`${D}/plan.md`, `${D}/plan.orig.md`); // the plan exactly as the AI wrote it, to show what the user changed
   snap('plan');
   say(`plan written: ${path.resolve(D, 'plan.md')}${ACS.length ? ` (covers ${ACS.join(', ')})` : ''}`);
   if (cfg.pauseAfterPlan) {
-    Object.assign(status, { state: 'paused', exitCode: 10, currentStep: null, message: 'Waiting for your review of the plan' }); save();
+    const problems = lint.errors.length ? ` (${lint.errors.length} problem(s) the planner could not fix: they are listed in the editor)` : '';
+    Object.assign(status, { state: 'paused', exitCode: 10, currentStep: null, message: `Waiting for your review of the plan${problems}` }); save();
     say(`paused: review the plan${url ? ` at ${url}/#run=${status.id}&doc=plan` : ' (.pipeline/plan.md)'}, edit it there if you like, then continue with: node pipeline.mjs ${cfgPath} --from build`);
     process.exit(10);
   }
@@ -318,15 +363,30 @@ if (!NOGIT) {
 
 if (idx <= 1) await build(false);
 let ok = idx === 3; // --from commit skips build/review
+let prevSig = '', why = '';
+const timing = (s) => s.replace(/\d+\.\d+/g, '#').replace(/\b\d+\s?(?:ms|s|secs?|seconds?)\b/gi, '#').replace(/(duration_ms\s+|\(node:)\d+/g, '$1#'); // timings and process ids differ between otherwise identical runs
 for (let i = 0; !ok && i <= status.maxFixLoops; i++) {
   status.round = i + 1; save();
-  const t = testGate();
-  const r = await review();
-  say(`round ${i + 1}: tests ${t ? 'ok' : 'FAIL'}, review ${r ? 'PASS' : 'FAIL'}`);
-  if (t && r) { ok = true; break; }
-  if (i < status.maxFixLoops) await build(true);
+  const g = await gateStage();
+  let r = false;
+  if (g.blocked.length) {
+    why = `gates failing: ${g.blocked.map((x) => x.id).join(', ')}`;
+    say(`round ${i + 1}: ${why}; the review waits until they pass`);
+  } else {
+    r = await review();
+    why = 'review found Critical problems';
+    say(`round ${i + 1}: gates ok, review ${r ? 'PASS' : 'FAIL'}`);
+  }
+  if (!g.blocked.length && r) { ok = true; break; }
+  if (i >= status.maxFixLoops) break;
+  // Identical tool output two rounds in a row means the fix changed nothing that matters: another paid attempt would do the same.
+  // (Only for gates: a reviewer repeating its wording is a weaker signal than a tool printing the same errors.)
+  const sig = g.blocked.length ? timing(g.blocked.map((x) => `${x.id}:${x.out}`).join('|')) : '';
+  if (sig && sig === prevSig) { say('no progress: the same gate failures came back unchanged, so no more fix rounds are spent on them'); break; }
+  prevSig = sig;
+  await build(true, g.blocked.map((x) => x.id));
 }
-if (!ok) die(`still failing after fix loops. Nothing committed. See ${D}/review.md and ${D}/test-output.txt`, 2);
+if (!ok) die(`still failing (${why}) after fix loops. Nothing committed. See ${D}/test-output.txt${status.reviews.length ? ` and ${D}/review.md` : ''}`, 2);
 
 if (NOGIT) { // nothing to commit to: record the result in the private history and finish (no Haiku step)
   git('reset', '-q');

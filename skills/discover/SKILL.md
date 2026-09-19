@@ -52,7 +52,7 @@ Ask the user to pick (`AskUserQuestion`, recommendation first). Record the choic
 
 ## Phase 4 - Write the documents
 Fill the templates; keep the SPEC to 1-2 pages because every pipeline run reads it.
-- **SPEC.md** - every section of the template. ACs numbered `AC-1..n`.
+- **SPEC.md** - every section of the template. ACs numbered `AC-1..n`. Fill the Commands table: Test always, and Lint / Types / Build when the chosen stack has them (for example `ruff check .`, `mypy .`, `npm run build`): the pipeline's quality gates run exactly these. Delete a row that does not apply.
 - **ROADMAP.md** - 2-6 milestones, each a vertical slice that runs and is testable, each listing the ACs it completes (`ACs: AC-1, AC-2`); together they cover every AC exactly once. **M1 is always**: project skeleton + test runner wired up + the smallest end-to-end behavior. Keep the heading format `## [ ] M<n> - <title>` exactly; `/setup-pipeline` parses it.
 - **CLAUDE.md** - under ~40 lines: stack, install/run/test commands, folder layout to create, conventions, no-go zones. Every pipeline step loads it, so every extra line is paid on every run. If a CLAUDE.md already exists, merge into it instead of replacing it.
 
@@ -65,4 +65,4 @@ Show the user a compact summary (goal, AC list, stack decision, milestone list, 
 ## Rules
 - Never write product code in this skill; its only outputs are the three documents (plus the initial commit in Phase 0).
 - One question per message, each with a recommendation. Max 12.
-- Every AC must be testable. Rewrite vague ones before writing them down.
+- Every AC must be testable. Rewrite vague ones before writing them down. The pipeline later requires an automated test that names each AC id, so an AC nobody can test automatically (pure taste, "feels good") belongs in the Constraints or Definition of done as a manual check instead.

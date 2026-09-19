@@ -9,7 +9,7 @@
 <Who uses it and in what situation.>
 
 ## Acceptance criteria
-Each criterion is observable and testable. IDs are stable; never renumber.
+Each criterion is observable and testable. IDs are stable; never renumber. The pipeline requires at least one automated test whose name or comment contains each ID.
 
 - **AC-1** <User can ... and sees ...>
 - **AC-2** <...>
@@ -48,6 +48,11 @@ Each criterion is observable and testable. IDs are stable; never renumber.
 | Install | `<...>` |
 | Run | `<...>` |
 | Test | `<...>` |
+| Lint | `<...>` |
+| Types | `<...>` |
+| Build | `<...>` |
+
+The pipeline's quality gates run the Test, Lint, Types and Build rows (rows left as `<...>` are auto-detected; delete rows that do not apply).
 
 ## Assumptions
 Decisions made without an explicit answer from the user. Revisit if wrong.

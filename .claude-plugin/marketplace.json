@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "claude-pipeline",
-      "description": "Idea -> spec -> milestones built by an automated Plan/Build/Review/Commit pipeline. Commands: /discover, /setup-pipeline.",
+      "description": "Idea -> spec -> milestones built by an automated Plan/Build/Review/Commit pipeline with a plan check and quality gates. Commands: /discover, /setup-pipeline, /toolkit.",
       "source": "./"
     }
   ]
