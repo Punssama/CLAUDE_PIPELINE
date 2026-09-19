@@ -1,10 +1,20 @@
 {
   "name": "claude-pipeline",
-  "version": "0.2.0",
-  "description": "Automated multi-model dev pipeline: Plan (Opus) -> Build (Sonnet) -> test gate -> Review (Sonnet, read-only) -> Commit/push (Haiku, no edit rights).",
-  "author": { "name": "Punssama" },
+  "version": "0.3.0",
+  "description": "From a vague idea to reviewed commits: /discover interviews you into SPEC.md + ROADMAP.md, /setup-pipeline builds each milestone with Plan (Opus) -> Build (Sonnet) -> test gate -> Review (read-only) -> Commit (Haiku).",
+  "author": {
+    "name": "Punssama"
+  },
   "homepage": "https://github.com/Punssama/CLAUDE_PIPELINE",
   "repository": "https://github.com/Punssama/CLAUDE_PIPELINE",
   "license": "MIT",
-  "keywords": ["pipeline", "automation", "multi-model", "review", "commit"]
+  "keywords": [
+    "pipeline",
+    "automation",
+    "multi-model",
+    "spec",
+    "roadmap",
+    "review",
+    "commit"
+  ]
 }

@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "claude-pipeline",
-      "description": "Plan (Opus) -> Build (Sonnet) -> Review (Sonnet, read-only) -> Commit (Haiku) pipeline, run with /setup-pipeline.",
+      "description": "Idea -> spec -> milestones built by an automated Plan/Build/Review/Commit pipeline. Commands: /discover, /setup-pipeline.",
       "source": "./"
     }
   ]

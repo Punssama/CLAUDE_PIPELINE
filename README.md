@@ -1,39 +1,45 @@
 # claude-pipeline
 
-Plugin Claude Code chạy một pipeline tự động nhiều model trên repo git của bạn:
+A Claude Code plugin that takes you from a rough idea to committed, reviewed code, one milestone at a time.
 
 ```
-Plan (Opus 5) → Build (Sonnet 5) → test gate → Review (Sonnet 5, chỉ đọc) → Commit + push (Haiku 4.5, không sửa code)
-                     ↑________ sửa lỗi nếu review/test FAIL (tối đa N vòng) ________|
+/discover  →  SPEC.md + ROADMAP.md          (interactive: you answer ≤ 12 questions)
+/setup-pipeline  →  one milestone, automated:
+
+  Plan (Opus) → Build (Sonnet) → test gate → Review (read-only) → Commit (Haiku)
+                     ↑_______ fix loop while review/tests fail _______|
+
+/setup-pipeline next  →  the next milestone
 ```
 
-Mỗi bước là một phiên `claude -p` riêng, **quyền bị khoá bằng danh sách công cụ** (không chỉ bằng lời dặn): planner chỉ ghi được `plan.md`, reviewer chỉ ghi được `review.md` và chạy git đọc, committer không có công cụ sửa file. Nếu vẫn FAIL sau các vòng sửa → **không commit gì**.
+- **`/discover`** turns a vague, hand-typed idea ("build me a card RPG with...") into a spec: it asks one question at a time (max 12), helps you pick a tech stack from 2-3 compared options, and writes `SPEC.md`, `ROADMAP.md` and a short `CLAUDE.md`.
+- **`/setup-pipeline`** builds one milestone (or any clear request) with a four-step headless pipeline. Each step is a separate `claude -p` run whose **permissions are locked by its tool list**, not just by instructions: the planner can only write `plan.md`, the reviewer can only write `review.md` and run read-only git, the committer has no file-editing tools. If review or tests still fail after the fix loops, **nothing is committed**.
 
-## Cài đặt
+## Install
 
-### Bước 1: Kiểm tra máy đã có đủ 3 thứ
+### Step 1: Check you have three things
 
-Mở terminal (Windows: PowerShell; macOS/Linux: Terminal) và chạy:
+In a terminal (PowerShell on Windows, Terminal on macOS/Linux):
 
 ```bash
 claude --version   # Claude Code
 git --version      # Git
-node --version     # Node.js, cần v18 trở lên
+node --version     # Node.js 18 or newer
 ```
 
-Thiếu cái nào thì cài cái đó:
+Missing one? Install it:
 
-| Thiếu | Cài |
+| Missing | Install |
 |---|---|
-| `claude` | https://docs.claude.com/en/docs/claude-code/setup, rồi chạy `claude` một lần để đăng nhập |
+| `claude` | https://docs.claude.com/en/docs/claude-code/setup, then run `claude` once to log in |
 | `git` | Windows: https://git-scm.com/download/win · macOS: `xcode-select --install` · Linux: `sudo apt install git` |
-| `node` | https://nodejs.org (bản LTS) |
+| `node` | https://nodejs.org (LTS) |
 
-Cài xong thì **mở terminal mới** rồi chạy lại 3 lệnh trên để chắc chắn.
+Open a **new** terminal afterwards and run the three commands again.
 
-### Bước 2: Cài plugin
+### Step 2: Install the plugin
 
-Mở Claude Code (gõ `claude` trong terminal), rồi gõ lần lượt **2 lệnh** này vào ô chat:
+Start Claude Code (`claude`) and type these two commands in the chat:
 
 ```
 /plugin marketplace add Punssama/CLAUDE_PIPELINE
@@ -43,10 +49,10 @@ Mở Claude Code (gõ `claude` trong terminal), rồi gõ lần lượt **2 lệ
 /plugin install claude-pipeline@punssama
 ```
 
-Nếu được hỏi phạm vi cài (scope), chọn **user** để dùng được ở mọi dự án.
+If asked for a scope, choose **user** so it works in every project.
 
 <details>
-<summary>Cách khác: cài bằng lệnh terminal (không cần mở Claude Code)</summary>
+<summary>Alternative: install from the terminal</summary>
 
 ```bash
 claude plugin marketplace add Punssama/CLAUDE_PIPELINE
@@ -55,96 +61,105 @@ claude plugin install claude-pipeline@punssama
 
 </details>
 
-### Bước 3: Khởi động lại và kiểm tra
+### Step 3: Restart and check
 
-1. Thoát Claude Code (`/exit`) rồi mở lại. Plugin chỉ được nạp khi session mới bắt đầu.
-2. Gõ `/plugin`, vào tab **Installed**: phải thấy `claude-pipeline` ở trạng thái **enabled**.
-   Hoặc chạy trong terminal: `claude plugin list`.
-3. Gõ `/setup` trong ô chat: danh sách gợi ý phải có `setup-pipeline`.
+1. Quit Claude Code (`/exit`) and start it again: plugins load when a session starts.
+2. Run `/plugin` → **Installed**: `claude-pipeline` should be **enabled** (or run `claude plugin list` in a terminal).
+3. Type `/disc` and `/setup` in the chat: `discover` and `setup-pipeline` should appear in the suggestions.
 
-Xong. Chuyển sang phần [Dùng](#dùng).
-
-### Cập nhật lên bản mới
+### Update / uninstall
 
 ```
-/plugin marketplace update punssama
-```
-
-rồi khởi động lại Claude Code.
-
-### Gỡ cài đặt
-
-```
-/plugin uninstall claude-pipeline@punssama
+/plugin marketplace update punssama          # update, then restart Claude Code
+/plugin uninstall claude-pipeline@punssama   # uninstall
 /plugin marketplace remove punssama
 ```
 
-### Gặp lỗi khi cài
+### Install problems
 
-| Lỗi | Cách sửa |
+| Problem | Fix |
 |---|---|
-| `Permission denied (publickey)` khi `marketplace add` | Máy chưa có SSH key GitHub. Dùng URL HTTPS: `/plugin marketplace add https://github.com/Punssama/CLAUDE_PIPELINE.git`. Vẫn lỗi thì chạy một lần: `git config --global url."https://github.com/".insteadOf git@github.com:` |
-| Gõ `/setup-pipeline` không thấy | Chưa khởi động lại Claude Code. Nếu trùng tên với skill khác, gõ đầy đủ `/claude-pipeline:setup-pipeline` |
-| Pipeline báo `cannot run claude` | `claude` không nằm trong PATH của terminal. Mở terminal mới rồi chạy `claude --version`; nếu không chạy được thì cài lại Claude Code |
-| `node: command not found` | Chưa cài Node.js, hoặc chưa mở terminal mới sau khi cài |
-| `working tree not clean` | Repo còn thay đổi chưa commit. Chạy `git add -A && git commit -m "wip"` (hoặc `git stash`) trước |
-| `refusing to run on main` | Bình thường: pipeline tự tạo nhánh `auto/...` khi chạy từ đầu. Lỗi này chỉ xảy ra khi chạy `--from ...` mà đang đứng ở `main` |
+| `Permission denied (publickey)` on `marketplace add` | No GitHub SSH key. Use HTTPS: `/plugin marketplace add https://github.com/Punssama/CLAUDE_PIPELINE.git`. Still failing? Run once: `git config --global url."https://github.com/".insteadOf git@github.com:` |
+| `/discover` or `/setup-pipeline` not listed | Restart Claude Code. On a name clash use `/claude-pipeline:discover` or `/claude-pipeline:setup-pipeline` |
+| Pipeline says `cannot run claude` | `claude` is not on the terminal's PATH. Open a new terminal and run `claude --version`; reinstall Claude Code if it fails |
+| `node: command not found` | Node.js is not installed, or the terminal was opened before installing it |
 
-## Dùng
+## Usage
 
-Trong một repo git:
+### From an idea
 
 ```
-/setup-pipeline thêm endpoint /health trả về {"status":"ok"} kèm test
+/discover a turn-based card RPG where the player builds a deck and fights through 3 floors
 ```
 
-(Nếu trùng tên với skill khác: `/claude-pipeline:setup-pipeline ...`)
+1. **Where**: if you are not in a project, it asks for a name and folder, then creates it with `git init` and a first commit.
+2. **Interview**: one question per message, each with a recommended answer you can just accept. It covers users, core flows (written as testable acceptance criteria `AC-1..n`), non-goals, platform, data, integrations, constraints and "done". Say "enough" or "you decide" at any point and it fills the rest with recorded assumptions.
+3. **Stack**: 2-3 options compared (fit, pitfalls, testable from the command line?). It prefers stacks the pipeline can test headlessly and, for games and apps, separates core logic from the UI.
+4. **Documents**: `SPEC.md`, `ROADMAP.md` (2-6 runnable milestones, each listing its ACs; M1 is always skeleton + test runner + first slice) and a short `CLAUDE.md`. You approve them, then they are committed.
 
-### Claude sẽ làm gì (6 pha)
+Then build milestone by milestone:
 
-| Pha | Việc | Bạn cần làm |
+```
+/setup-pipeline          # builds M1
+/setup-pipeline next     # builds the next unticked milestone
+```
+
+### From a clear request (existing project)
+
+```
+/setup-pipeline add a /health endpoint returning {"status":"ok"}, with a test
+```
+
+A readiness gate checks four things: outcome, scope, stack and done criteria. If one or two are missing it asks up to 3 questions; if the request is really a product idea, it sends you to `/discover` instead of guessing.
+
+### What `/setup-pipeline` does
+
+| Phase | What happens | You |
 |---|---|---|
-| 0. Kiểm tra | Có git, node, claude; repo sạch | Đồng ý `git init` / commit nếu được hỏi |
-| 1. Tự tìm hiểu dự án | Đọc README, CLAUDE.md, manifest, test, lịch sử git, plugin đã cài, memory cũ (nếu có agentmemory) → tóm tắt 3–5 dòng | Sửa nếu tóm tắt sai |
-| 2. Hỏi nhanh | Mô tả ngắn + 4 câu chọn: **quy mô**, **ưu tiên token**, **rủi ro**, **có làm nhiều phiên không** | Trả lời |
-| 3. Gợi ý bộ công cụ | Đề xuất khung (nhẹ / agent-skills / superpowers đầy đủ / superpowers một phần) + ponytail, agentmemory, kèm lý do; báo cái nào chưa cài và lệnh cài | Chọn |
-| 4. Chốt yêu cầu + chuẩn bị repo | Hỏi cho rõ bằng công cụ tương tác của khung đã chọn (brainstorming / interview-me…). Chia nhỏ nếu dự án lớn; đề xuất tạo/rút gọn `CLAUDE.md`; thêm bước dựng test nếu chưa có | Trả lời, đồng ý |
-| 5. Ghi cấu hình | Chọn model + ngân sách theo mức token, tắt plugin không dùng cho các bước chạy ngầm, hiện bản tóm tắt | Xác nhận để chạy |
-| 6. Chạy + báo cáo | Chạy pipeline trên nhánh `auto/<tên>`, báo kết quả; lưu bài học vào agentmemory nếu dùng | Duyệt plan (nếu chọn dừng sau plan) |
+| 0. Preflight | git repo with a commit, node, claude, clean tree | Commit or stash if asked |
+| 1. Mode | Milestone (SPEC + ROADMAP exist) or request (readiness gate) | Answer ≤ 3 questions if needed |
+| 2. Toolkit | Token profile, framework, add-ons; reuses the previous run's choices on `next` | Choose |
+| 3. Config | Writes `.pipeline/config.json`, shows a summary with the max budget | Confirm |
+| 4. Run | Plan → Build → test gate → Review → Commit on a new `auto/...` branch | Approve the plan if you chose to pause |
+| 5. Merge | Merges the branch into main, ticks the milestone in ROADMAP.md, saves the outcome to agentmemory if used | Confirm the merge |
 
-### Mức token
+In milestone mode the runner **rejects a plan that does not map every AC of the milestone to a task** (one retry), and the reviewer grades the change against those ACs.
 
-| Mức | Plan | Build | Review | Commit | Vòng sửa tối đa | Trần ngân sách/lượt* |
+### Token profiles
+
+| Profile | Plan | Build | Review | Commit | Fix loops | Max budget per run* |
 |---|---|---|---|---|---|---|
-| Tiết kiệm | Sonnet 5 | Sonnet 5 | Haiku 4.5 | Haiku 4.5 | 1 | ~4,8 USD |
-| Cân bằng | Opus 5 | Sonnet 5 | Sonnet 5 | Haiku 4.5 | 2 | ~11,5 USD |
-| Chất lượng | Opus 5 | Sonnet 5 | Opus 5 | Haiku 4.5 | 3 | ~19,5 USD |
+| Economy | Sonnet 5 | Sonnet 5 | Haiku 4.5 | Haiku 4.5 | 1 | ~$4.80 |
+| Balanced | Opus 5 | Sonnet 5 | Sonnet 5 | Haiku 4.5 | 2 | ~$11.50 |
+| Quality | Opus 5 | Sonnet 5 | Opus 5 | Haiku 4.5 | 3 | ~$19.50 |
 
-\* Tổng trần của 4 bước, chưa tính vòng sửa (mỗi vòng thêm Build + Review). Đây là **mức tối đa**, chạy thật thường thấp hơn nhiều.
+\* Sum of the four per-step caps, before fix loops (each loop adds Build + Review). It is a **ceiling**; real runs usually cost much less.
 
-Ngoài chọn model, plugin tiết kiệm token bằng cách: tắt các plugin bạn không chọn trong các bước chạy ngầm (`disablePlugins`), giới hạn số skill mỗi bước, giữ `CLAUDE.md` ngắn, và đẩy phần hỏi đáp về phiên tương tác để các bước ngầm không phải đoán.
+Other ways it saves tokens: interactive questions happen once in `/discover` instead of the headless steps guessing; the headless steps read a short `SPEC.md` instead of a chat history; plugins you did not choose are switched off for the headless steps (`disablePlugins`); skills per step are capped; `CLAUDE.md` is kept short.
 
-### Kết quả
+### Exit codes
 
-| Mã thoát | Ý nghĩa |
+| Code | Meaning |
 |---|---|
-| 0 | Đã commit (và push nếu bật) |
-| 10 | Dừng sau plan → đọc `.pipeline/plan.md`, rồi chạy tiếp `--from build` |
-| 2 | Review/test vẫn FAIL → xem `.pipeline/review.md`, không có gì được commit |
-| 1 | Lỗi → xem `.pipeline/logs/` |
+| 0 | Committed (and pushed if enabled) |
+| 10 | Paused after the plan: read `.pipeline/plan.md`, then continue with `--from build` |
+| 3 | The plan does not cover the milestone's ACs: clarify or split the milestone |
+| 2 | Review or tests still failing: see `.pipeline/review.md`; nothing was committed |
+| 1 | Error: see `.pipeline/logs/` |
 
-Chạy tiếp từ giữa: `--from build | review | commit`. Không bao giờ chạy trên `main`/`master`, không force-push.
+Resume from a step: `--from build | review | commit`. It never runs on `main`/`master` and never force-pushes.
 
-## Cấu hình (`.pipeline/config.json`)
+## Configuration (`.pipeline/config.json`)
 
-Claude tự ghi file này ở pha 5; bạn có thể sửa tay rồi chạy lại.
+Written by `/setup-pipeline`; you can edit it and rerun.
 
 ```json
 {
-  "project": "≤10 dòng: dự án là gì, stack, quy ước, ràng buộc",
-  "task": "việc cần làm: kết quả, phạm vi, không làm gì, tiêu chí xong",
+  "milestone": "M2",
+  "project": "request mode: up to 10 lines of context",
+  "task": "request mode: outcome, scope, non-goals, done criteria",
   "guidance": "Ponytail level: full. Terse output.",
-  "branch": "auto/ten-nhanh",
+  "branch": "auto/m2-combat",
   "testCmd": "npm test",
   "pauseAfterPlan": true,
   "maxFixLoops": 2,
@@ -159,31 +174,33 @@ Claude tự ghi file này ở pha 5; bạn có thể sửa tay rồi chạy lạ
 }
 ```
 
-| Trường | Ý nghĩa |
+| Field | Meaning |
 |---|---|
-| `project` | Bối cảnh dự án, chỉ đưa vào bước Plan (plan.md mang tiếp cho các bước sau) |
-| `guidance` | Một dòng chỉ dẫn đưa vào **mọi** bước |
-| `disablePlugins` | Plugin (`tên@marketplace`) bị tắt trong các bước chạy ngầm, chỉ trong pipeline, không ảnh hưởng Claude Code bình thường của bạn |
-| `skills` | Tên skill **đã cài trên máy bạn**. Không có cũng chạy được |
+| `milestone` | Milestone mode: plan, build and review only this ROADMAP milestone, gated on its ACs |
+| `project` / `task` | Request mode: context (plan step only) and the task |
+| `guidance` | One line added to **every** step |
+| `disablePlugins` | Plugins (`name@marketplace`) switched off for the headless steps only; your normal Claude Code is unaffected |
+| `skills` | Skill names **installed on your machine**. Empty is fine |
+| `budgetUsd` | Hard spending cap per step |
 
-### Công cụ hỗ trợ (tuỳ chọn)
+### Optional companion plugins
 
-| Công cụ | Cài |
-|---|---|
-| [ponytail](https://github.com/DietrichGebert/ponytail) | `claude plugin marketplace add DietrichGebert/ponytail` → `claude plugin install ponytail@ponytail` |
-| [superpowers](https://github.com/obra/superpowers) | `claude plugin marketplace add obra/superpowers-marketplace` → `claude plugin install superpowers@superpowers-marketplace` |
-| [agent-skills](https://github.com/addyosmani/agent-skills) | `claude plugin marketplace add addyosmani/agent-skills` → `claude plugin install agent-skills@addy-agent-skills` |
-| [agentmemory](https://github.com/rohitg00/agentmemory) | `claude plugin marketplace add rohitg00/agentmemory` → `claude plugin install agentmemory@agentmemory`, rồi chạy server `npx -y @agentmemory/agentmemory@latest` |
+| Tool | What it adds | Install |
+|---|---|---|
+| [ponytail](https://github.com/DietrichGebert/ponytail) | Less code, less prose | `claude plugin marketplace add DietrichGebert/ponytail` → `claude plugin install ponytail@ponytail` |
+| [superpowers](https://github.com/obra/superpowers) | Plan/TDD/debug/review discipline | `claude plugin marketplace add obra/superpowers-marketplace` → `claude plugin install superpowers@superpowers-marketplace` |
+| [agent-skills](https://github.com/addyosmani/agent-skills) | Full lifecycle skills incl. security, performance | `claude plugin marketplace add addyosmani/agent-skills` → `claude plugin install agent-skills@addy-agent-skills` |
+| [agentmemory](https://github.com/rohitg00/agentmemory) | Memory across sessions | `claude plugin marketplace add rohitg00/agentmemory` → `claude plugin install agentmemory@agentmemory`, then `npx -y @agentmemory/agentmemory@latest` to start its server |
 
-Không cài cái nào vẫn dùng được (khung "Nhẹ"). Pha 3 sẽ hỏi trước khi cài giúp bạn.
+None are required: the "Light" setup works with nothing else installed. `/setup-pipeline` asks before installing anything.
 
-## Lưu ý
+## Caveats
 
-- **Tốn tiền API thật.** `budgetUsd` là trần cho mỗi bước; xem bảng Mức token ở trên.
-- Bước Build được chạy lệnh shell (trừ commit/push/reset/đổi nhánh). Chỉ chạy trên repo bạn tin tưởng.
-- Nên để `pauseAfterPlan: true` vài lần đầu để đọc plan trước khi code.
-- Đang ở bản thử nghiệm (0.2.0): đã test trọn vẹn với Haiku; chưa test đầy đủ với Opus/Sonnet và nhánh push.
+- **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
+- The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
+- Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
+- Status (0.3.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
-## Giấy phép
+## License
 
 MIT
