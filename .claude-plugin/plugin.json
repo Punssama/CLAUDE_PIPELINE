@@ -1,7 +1,7 @@
 {
   "name": "claude-pipeline",
-  "version": "0.4.2",
-  "description": "From a vague idea to reviewed commits: /discover interviews you into SPEC.md + ROADMAP.md, /setup-pipeline builds each milestone with Plan (Opus) -> Build (Sonnet) -> test gate -> Review (read-only) -> Commit (Haiku).",
+  "version": "0.5.0",
+  "description": "From a vague idea to reviewed code in any local folder (git optional): /discover interviews you into SPEC.md + ROADMAP.md, /setup-pipeline builds each milestone with Plan (Opus) -> Build (Sonnet) -> test gate -> Review (read-only) -> Commit (Haiku).",
   "author": {
     "name": "Punssama"
   },

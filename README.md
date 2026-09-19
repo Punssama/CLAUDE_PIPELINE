@@ -1,6 +1,6 @@
 # claude-pipeline
 
-A Claude Code plugin that takes you from a rough idea to committed, reviewed code, one milestone at a time.
+A Claude Code plugin that takes you from a rough idea to tested, reviewed code, one milestone at a time. Works in any local folder: git is optional, and GitHub is never required.
 
 ```
 /discover  →  SPEC.md + ROADMAP.md          (interactive: you answer ≤ 12 questions)
@@ -23,7 +23,7 @@ In a terminal (PowerShell on Windows, Terminal on macOS/Linux):
 
 ```bash
 claude --version   # Claude Code
-git --version      # Git
+git --version      # Git (the program is needed even if your project does not use git)
 node --version     # Node.js 18 or newer
 ```
 
@@ -127,6 +127,21 @@ It does not dead-end: typing `/setup-pipeline` or `/setup-pipeline next` in a pr
 
 In milestone mode the runner **rejects a plan that does not map every AC of the milestone to a task** (one retry), and the reviewer grades the change against those ACs.
 
+### Git or no git
+
+| Your setup | What the pipeline does |
+|---|---|
+| **Local git repo** (no GitHub needed) | Each run gets its own `auto/...` branch; Haiku writes the commit; after review you merge it into `main`. Push only if you ask for it |
+| **Plain folder, no git** (`"vcs": "none"`) | Changes go straight into the folder. A private history in `.pipeline/` (your folder gets no `.git`) lets the reviewer see the diff and lets you undo the last run with one command. The commit step is skipped, so runs are a little cheaper |
+
+`/setup-pipeline` asks which one you want the first time it meets a folder without git. Undo a no-git run:
+
+```bash
+node <plugin>/skills/setup-pipeline/pipeline.mjs .pipeline/config.json --undo
+```
+
+(or just ask Claude to undo the last pipeline run). It restores every file to how it was before that run.
+
 ### Live dashboard
 
 When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`. One local page shows **every pipeline run on the machine**, across all your projects:
@@ -171,6 +186,7 @@ Written by `/setup-pipeline`; you can edit it and rerun.
 
 ```json
 {
+  "vcs": "git",
   "milestone": "M2",
   "project": "request mode: up to 10 lines of context",
   "task": "request mode: outcome, scope, non-goals, done criteria",
@@ -192,6 +208,7 @@ Written by `/setup-pipeline`; you can edit it and rerun.
 
 | Field | Meaning |
 |---|---|
+| `vcs` | `git` (default) or `none` for a plain folder without git |
 | `milestone` | Milestone mode: plan, build and review only this ROADMAP milestone, gated on its ACs |
 | `project` / `task` | Request mode: context (plan step only) and the task |
 | `guidance` | One line added to **every** step |
@@ -215,7 +232,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.4.2): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.5.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 

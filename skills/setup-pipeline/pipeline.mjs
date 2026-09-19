@@ -21,14 +21,44 @@ const from = fi >= 0 ? rest[fi + 1] : 'plan';
 const ORDER = ['plan', 'build', 'review', 'commit'];
 const D = '.pipeline';
 const M = cfg.milestone;
-const git = (...a) => spawnSync('git', a, { encoding: 'utf8' });
 const WIN = process.platform === 'win32';
+// vcs "none": the project folder has no git. A private repo in .pipeline/shadow.git (GIT_DIR, inherited by every
+// headless step) gives the reviewer a diff and the user an undo, without creating .git in their folder.
+const NOGIT = cfg.vcs === 'none';
+if (NOGIT) {
+  process.env.GIT_DIR = path.resolve(D, 'shadow.git');
+  process.env.GIT_WORK_TREE = process.cwd();
+}
+const git = (...a) => spawnSync('git', a, { encoding: 'utf8' });
+if (NOGIT && !fs.existsSync(process.env.GIT_DIR)) {
+  git('init', '-q');
+  git('config', 'user.name', 'claude-pipeline'); git('config', 'user.email', 'pipeline@localhost');
+  git('config', 'core.autocrlf', 'false');
+}
+const snapshot = (msg) => { git('add', '-A'); git('commit', '-q', '--allow-empty', '-m', msg); return git('rev-parse', 'HEAD').stdout.trim(); };
+// Keep .pipeline/ (plan, logs, the shadow repo itself) out of every diff and commit.
+{
+  const ex = path.resolve(git('rev-parse', '--git-path', 'info/exclude').stdout.trim() || '.git/info/exclude');
+  const cur = fs.existsSync(ex) ? fs.readFileSync(ex, 'utf8') : '';
+  if (!cur.includes(`${D}/`)) { fs.mkdirSync(path.dirname(ex), { recursive: true }); fs.appendFileSync(ex, `\n${D}/\n`); }
+}
+
+if (rest0() === '--undo') { // vcs none: put the folder back the way it was before the last run
+  if (!NOGIT) { console.log('[pipeline] --undo is for vcs "none"; with git use git revert / git reset'); process.exit(1); }
+  const base = fs.existsSync(`${D}/baseline`) ? fs.readFileSync(`${D}/baseline`, 'utf8').trim() : '';
+  if (!base) { console.log('[pipeline] no baseline recorded'); process.exit(1); }
+  // reset --hard also deletes files the run added; clean removes leftovers such as caches (never .pipeline/)
+  const r = git('reset', '-q', '--hard', base); git('clean', '-fdq', '-e', D);
+  if (r.status !== 0) { console.log(`[pipeline] undo failed: ${r.stderr.trim()}`); process.exit(1); }
+  console.log(`[pipeline] restored the folder to the state before the last run (${base.slice(0, 7)})`); process.exit(0);
+}
+function rest0() { return process.argv[3]; }
 
 // ---- run record (status + event log) read by the dashboard -------------------------------
-const root = git('rev-parse', '--show-toplevel').stdout.trim() || process.cwd();
+const root = NOGIT ? process.cwd() : git('rev-parse', '--show-toplevel').stdout.trim() || process.cwd();
 const status = {
   id: `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`,
-  project: path.basename(root), cwd: root, branch: cfg.branch, milestone: M || null,
+  project: path.basename(root), cwd: root, branch: NOGIT ? 'no git (local folder)' : cfg.branch, milestone: M || null,
   task: (cfg.task || '').slice(0, 300), from, pid: process.pid, state: 'running', exitCode: null, message: '',
   startedAt: new Date().toISOString(), updatedAt: null, currentStep: null, round: 0, totalCostUsd: 0,
   maxFixLoops: cfg.maxFixLoops ?? 2,
@@ -181,13 +211,18 @@ const url = await ensureDashboard();
 if (url) say(`dashboard: ${url}/#run=${status.id}`);
 
 if (from === 'plan') {
-  const ex = fs.readFileSync('.git/info/exclude', 'utf8');
-  if (!ex.includes(`${D}/`)) fs.appendFileSync('.git/info/exclude', `\n${D}/\n`);
-  if (git('status', '--porcelain').stdout.trim()) die('working tree not clean; commit or stash first');
-  const cur = git('branch', '--show-current').stdout.trim();
-  const b = git('switch', '-c', cfg.branch);
-  if (b.status !== 0) die(`cannot create branch ${cfg.branch}: ${b.stderr.trim()}`);
-  say(`branch ${cfg.branch} (from ${cur})`);
+  if (NOGIT) {
+    // No branches without git: changes land in the folder; the baseline snapshot is the undo point.
+    const base = snapshot(`baseline before run ${status.id}`);
+    fs.writeFileSync(`${D}/baseline`, base);
+    say(`local folder, no git: baseline ${base.slice(0, 7)} saved (undo: node pipeline.mjs ${cfgPath} --undo)`);
+  } else {
+    if (git('status', '--porcelain').stdout.trim()) die('working tree not clean; commit or stash first');
+    const cur = git('branch', '--show-current').stdout.trim();
+    const b = git('switch', '-c', cfg.branch);
+    if (b.status !== 0) die(`cannot create branch ${cfg.branch}: ${b.stderr.trim()}`);
+    say(`branch ${cfg.branch} (from ${cur})`);
+  }
   fs.mkdirSync(D, { recursive: true });
   const planPrompt = (extra = '') => `${cfg.project ? `Project context:\n${cfg.project}\n\n` : ''}${M ? `Read SPEC.md (the product spec) and ROADMAP.md. Plan ONLY milestone ${M}; later milestones are out of scope.
 Acceptance criteria for ${M}: ${ACS.join(', ')}. In Tasks, write each of these AC IDs next to the task(s) that satisfy it.\n\n` : ''}Task: ${cfg.task || `Implement milestone ${M} of ROADMAP.md.`}
@@ -208,8 +243,10 @@ You are non-interactive: do not ask questions, record assumptions instead. Keep 
   if (cfg.pauseAfterPlan) die(`paused. Review plan.md, then: node pipeline.mjs ${cfgPath} --from build`, 10);
 }
 
-const cur = git('branch', '--show-current').stdout.trim();
-if (['main', 'master'].includes(cur)) die(`refusing to run on ${cur}`);
+if (!NOGIT) {
+  const cur = git('branch', '--show-current').stdout.trim();
+  if (['main', 'master'].includes(cur)) die(`refusing to run on ${cur}`);
+}
 
 if (idx <= 1) await build(false);
 let ok = idx === 3; // --from commit skips build/review
@@ -223,6 +260,16 @@ for (let i = 0; !ok && i <= status.maxFixLoops; i++) {
 }
 if (!ok) die(`still failing after fix loops. Nothing committed. See ${D}/review.md and ${D}/test-output.txt`, 2);
 
+if (NOGIT) { // nothing to commit to: record the result in the private history and finish (no Haiku step)
+  git('reset', '-q');
+  const sha = snapshot(`pipeline ${M || 'run'}: ${(cfg.task || `milestone ${M}`).slice(0, 60)}`);
+  const changed = git('diff', '--stat', `${fs.readFileSync(`${D}/baseline`, 'utf8').trim()}..${sha}`).stdout.trim();
+  Object.assign(status.steps.commit, { state: 'done', model: 'none (no git)' });
+  status.state = 'done'; status.exitCode = 0; status.currentStep = null;
+  status.message = `Changes are in the folder. Undo: node pipeline.mjs ${cfgPath} --undo\n${changed}`; save();
+  say(`done. changes written to the folder ($${status.totalCostUsd.toFixed(3)} total)\n${changed}`);
+  process.exit(0);
+}
 const before = git('rev-parse', 'HEAD').stdout;
 await run('commit',
   `Your job: create a git commit for the current changes, right now, without asking me anything. Run git status and git diff, stage the relevant files (never ${D}/, never caches), then commit with a Conventional Commit message that matches the diff. You have no file-editing tools: only inspect, stage, commit.

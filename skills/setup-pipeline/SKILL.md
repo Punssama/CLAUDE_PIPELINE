@@ -1,12 +1,14 @@
 ---
 name: setup-pipeline
-description: Build a clear request or the next ROADMAP milestone with an automated 4-step pipeline in the current git repo - Plan (Opus) -> Build (Sonnet) -> test gate -> Review (read-only) -> Commit (Haiku, no edit rights). Checks the request is ready first (sends vague ideas to /discover), recommends a toolkit (ponytail, agentmemory, agent-skills, superpowers) and a token profile, writes .pipeline/config.json, runs it, then merges the milestone. Use when the user says "setup-pipeline", "run the pipeline", "build the next milestone", "setup-pipeline next", or wants an automated plan-build-review-commit run.
+description: Build a clear request or the next ROADMAP milestone with an automated 4-step pipeline in the current project folder (local git optional, GitHub never required) - Plan (Opus) -> Build (Sonnet) -> test gate -> Review (read-only) -> Commit (Haiku, no edit rights). Checks the request is ready first (sends vague ideas to /discover), recommends a toolkit (ponytail, agentmemory, agent-skills, superpowers) and a token profile, writes .pipeline/config.json, runs it, then merges the milestone. Use when the user says "setup-pipeline", "run the pipeline", "build the next milestone", "setup-pipeline next", or wants an automated plan-build-review-commit run.
 argument-hint: "[clear request] | next"
 ---
 
 Runner: `${CLAUDE_SKILL_DIR}/pipeline.mjs` (Node). One headless `claude -p` per step, with a fixed model and a **tool allowlist that enforces the role**: the planner writes only `.pipeline/plan.md`, the reviewer writes only `.pipeline/review.md` and runs read-only git, the committer has no Edit/Write. Files are the only memory between steps.
 
 Plugin files are English; talk to the user in the language they write in. Keep each message short.
+
+**Works with any local folder.** Git is optional and always local: no GitHub account, remote or push is ever required (push is off unless the user asks). With git, each run gets its own branch; without git (`vcs: "none"`), changes go straight into the folder and the runner keeps a private undo history in `.pipeline/`. **Not wanting git or GitHub is never a reason to skip the pipeline or write the code yourself**: switch to `vcs: "none"` instead.
 
 **Asking questions.** Use `AskUserQuestion` with small, plain inputs: 1-4 questions per call, 2-4 options per question (never add an "Other" option: the picker adds one), a `header` of at most 12 characters, short labels, and the details in `description`. Keep file paths, backslashes and double quotes out of labels and question text. Ask one question per call whenever the text is long. If a call fails validation, retry once with simpler text; if it fails again, ask the same thing in plain chat as a numbered list and let the user answer with a number.
 
@@ -17,9 +19,13 @@ Check, in this order:
 1. **Tools** - `node -v`, `git --version`, `claude --version`. The only hard stop: say what to install (README's Install section) if one is missing.
 2. **Which project?**
    - Inside a git repo: use its root.
-   - In a folder with code but no git: offer `git init` + commit everything as `chore: baseline` (Recommended) / pick another folder.
+   - In a folder without git (with or without code): offer
+     - *Use a local git repo* (Recommended for developers who use git): `git init` + commit what is there as `chore: baseline`. Local only; nothing is uploaded.
+     - *No git, work directly in this folder*: set `"vcs": "none"`. Changes land in the folder, a private history in `.pipeline/` gives one-command undo, and the Commit step is skipped (cheaper).
+     - *Pick another folder*.
    - In a home, desktop or downloads folder, or an empty one: list the projects this machine has run the pipeline on (the `cwd` of each `~/.claude-pipeline/runs/*.json`, newest first, plus any path the user mentions) and ask which one. If it is a brand-new idea, hand off to `/discover`.
-   - A repo with no commits: offer to commit what is there as the baseline.
+   - A repo with no commits: offer to commit what is there as the baseline, or `vcs: "none"`.
+   - Steps 3-4 below only apply with git.
 3. **Uncommitted changes** (`git status --porcelain`) - offer: commit them as `chore: wip before pipeline` (Recommended when they look intentional) / stash them (`git stash -u`, tell the user how to restore) / let the user handle it. Never discard anything.
 4. **Left on a previous `auto/...` branch** - look at what that run did (`git log --oneline <main>..HEAD`, the verdict line of `.pipeline/review.md`, the newest `~/.claude-pipeline/runs` record for this repo if any) and offer:
    - *Merge it into `<main>` and continue* (Recommended when its last run committed and review passed): the Phase 5 merge, then continue from `<main>`.
@@ -93,6 +99,7 @@ Token hygiene you apply automatically:
 ## Phase 3 - Write `.pipeline/config.json`
 ```json
 {
+  "vcs": "git",
   "milestone": "M2",
   "project": "<request mode only: <= 10 lines of context the repo does not state>",
   "task": "<request mode: outcome, scope, non-goals, done criteria; milestone mode: omit>",
@@ -112,7 +119,8 @@ Token hygiene you apply automatically:
 }
 ```
 - `milestone` (milestone mode only): the runner reads SPEC.md + ROADMAP.md, plans only that milestone, **refuses a plan that does not map every AC of the milestone to a task** (one retry, then exit 3), and has the reviewer grade against those ACs. Take `testCmd` from SPEC.md's Commands table.
-- `branch` must be new (never main/master); on a rerun of the same milestone add a suffix.
+- `branch` must be new (never main/master); on a rerun of the same milestone add a suffix. Omit it with `"vcs": "none"`.
+- `"vcs": "none"`: no branches and no commit step; the runner snapshots the folder before building (undo point) and after. Undo the last run with `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json --undo`: it restores every file to the pre-run state, so edits made after the run are lost too; confirm with the user first.
 - Ask the last two with one `AskUserQuestion`: **Pause after the plan?** (Yes recommended for the first milestone and for anything touching auth, payments or data) and **Push?** (No recommended until the first run has been reviewed).
 
 Show a compact summary (mode, milestone and its ACs or the task, tools, skills per step, models, max budget = sum of budgetUsd plus Build + Review per fix loop, branch, test gate). Run only after the user says yes.
@@ -139,6 +147,7 @@ Then wait for the completion notification and read the rest of the output.
 - Report: branch, commit hash, test/review rounds, push status.
 - **Milestone mode**: ask to merge into the main branch. On yes: `git switch <main>`, `git merge --no-ff <auto-branch>`, tick the milestone in ROADMAP.md (`## [ ]` → `## [x]`), commit `docs: complete M<n>`. Push the main branch only if push is enabled, a remote exists and the user confirms. If the user prefers a PR instead (remote exists), push the auto branch and open one with `gh pr create` if `gh` is available.
 - **Request mode**: offer the same merge, or leave the branch for the user to review.
+- **`vcs: "none"`**: nothing to merge. Show the changed-files summary the runner printed and the undo command; in milestone mode tick the milestone in ROADMAP.md directly.
 - If agentmemory tools are available: `memory_save` one entry (milestone or task, profile and toolkit, outcome, any gotcha with its reason). If the user corrected your setup choices, save a lesson (`memory_lesson_save`).
 - Milestone mode: tell the user the next step: `/setup-pipeline next` builds the next unticked milestone with the same toolkit.
 
