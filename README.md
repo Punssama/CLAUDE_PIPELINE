@@ -152,6 +152,7 @@ When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`
 - test results, Critical review findings, and `plan.md` / `review.md` / test output
 - runs that were killed mid-way are marked `stopped`
 - filters (All / Running / Failed), tabs for Activity and the files, a step filter and a Follow toggle for the live feed
+- `plan.md` and `review.md` are **rendered as Markdown** (headings, tables, task lists, code, a coloured `VERDICT` badge); tick **Raw** to see the source. Rendering is hardened: raw HTML in the files is shown as text, images are never fetched, only `http(s)` links are clickable, and a Content-Security-Policy blocks foreign scripts and requests
 
 ![Pipeline dashboard](assets/dashboard.png)
 
@@ -235,7 +236,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.5.2): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.5.3): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 

@@ -93,6 +93,7 @@ function send(res, code, body, type = 'application/json') {
 async function serve() {
   fs.mkdirSync(RUNS, { recursive: true });
   const page = fs.readFileSync(path.join(HERE, 'dashboard.html'), 'utf8');
+  const marked = fs.readFileSync(path.join(HERE, 'vendor', 'marked.min.js'), 'utf8'); // renders plan.md / review.md
   const server = http.createServer((req, res) => {
     // Loopback names only: blocks DNS-rebinding pages from reading run data or deleting runs.
     if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(req.headers.host || '')) return send(res, 403, { error: 'forbidden host' });
@@ -100,6 +101,7 @@ async function serve() {
     const p = url.pathname.split('/').filter(Boolean);
     if (url.pathname === '/') return send(res, 200, page, 'text/html');
     if (url.pathname === '/api/ping') return send(res, 200, { ok: true, pid: process.pid });
+    if (url.pathname === '/vendor/marked.min.js') return send(res, 200, marked, 'text/javascript');
     if (req.method === 'DELETE') {
       // Only this page may delete: DELETE is never a "simple" cross-site request, and the Origin must be ours.
       const host = `http://${req.headers.host}`;
