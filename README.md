@@ -154,7 +154,9 @@ When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`
 
 ![Pipeline dashboard](assets/dashboard.png)
 
-It uses the first free port from 3120 up, listens on `127.0.0.1` only, and stops by itself when the last Claude Code session closes (a small SessionStart/SessionEnd hook keeps count). Open it any time by asking Claude for the pipeline dashboard. Run history is kept in `~/.claude-pipeline/` (override with `CLAUDE_PIPELINE_HOME`).
+It uses the first free port from 3120 up, listens on `127.0.0.1` only (and refuses other host names), and stops by itself when the last Claude Code session closes (a small SessionStart/SessionEnd hook keeps count). Open it any time by asking Claude for the pipeline dashboard.
+
+**History is kept until you delete it.** Every run is saved in `~/.claude-pipeline/runs/` (override with `CLAUDE_PIPELINE_HOME`), so stopping the dashboard, closing Claude or rebooting loses nothing. To tidy up, use **Delete run** on a run, or **Clear finished** next to a project name to remove all its finished runs. Running pipelines cannot be deleted, and deleting only removes the dashboard record: your project files are never touched.
 
 ### Token profiles
 
@@ -232,7 +234,7 @@ None are required: the "Light" setup works with nothing else installed. `/setup-
 - **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.5.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
+- Status (0.5.1): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. Not yet tested end to end with Opus/Sonnet, on macOS/Linux, or with pushing to a remote.
 
 ## License
 

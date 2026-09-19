@@ -23,7 +23,7 @@ header .live { margin-left: auto; font-size: 12px; color: var(--muted); }
 header .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
 main { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: calc(100vh - 50px); }
 aside { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; max-height: calc(100vh - 50px); }
-.proj { padding: 12px 16px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.proj { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
 .run { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit;
   padding: 9px 16px; border-left: 3px solid transparent; cursor: pointer; }
 .run:hover { background: var(--chip); }
@@ -36,6 +36,12 @@ aside { border-right: 1px solid var(--line); background: var(--panel); overflow-
 section { padding: 20px 24px; overflow-y: auto; max-height: calc(100vh - 50px); }
 .empty { color: var(--muted); padding: 40px; text-align: center; }
 h2 { margin: 0 0 4px; font-size: 18px; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.del { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--bad); cursor: pointer; white-space: nowrap; }
+.del:hover:not(:disabled) { border-color: var(--bad); }
+.del:disabled { color: var(--muted); cursor: not-allowed; }
+.proj .del { font-size: 11px; padding: 1px 8px; text-transform: none; letter-spacing: 0; font-weight: 500; }
 .path { color: var(--muted); font-size: 12px; font-family: var(--mono); word-break: break-all; }
 .msg { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--chip); font-size: 13px; white-space: pre-wrap; }
 .track { display: flex; margin: 20px 0 8px; }
@@ -118,7 +124,8 @@ function renderList() {
   if (!runs.length) { $('list').innerHTML = '<div class="empty">No runs yet.</div>'; return; }
   const byProject = {};
   for (const r of runs) (byProject[r.cwd] ||= []).push(r);
-  $('list').innerHTML = Object.values(byProject).map((rs) => `<div class="proj">${esc(rs[0].project)}</div>` + rs.map((r) => {
+  $('list').innerHTML = Object.values(byProject).map((rs) => `<div class="proj"><span>${esc(rs[0].project)}</span>${rs.some((r) => r.state !== 'running')
+      ? `<button class="del" data-clear="${esc(rs[0].cwd)}" title="Delete every finished run of this project">Clear finished</button>` : ''}</div>` + rs.map((r) => {
     const elapsed = r.state === 'running' ? dur(since(r.startedAt)) : r.state === 'stopped' ? 'killed' : dur(Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000));
     return `<button class="run ${r.id === selected ? 'sel' : ''}" data-id="${esc(r.id)}">
       <div class="top"><span class="name">${esc(r.milestone ? r.milestone + ' · ' : '')}${esc(r.branch || '')}</span>
@@ -136,7 +143,8 @@ function renderDetail() {
   const feedScroll = $('feed') ? $('feed').scrollTop : null, atBottom = $('feed') ? $('feed').scrollHeight - $('feed').scrollTop - $('feed').clientHeight < 30 : true;
   const oldFeed = $('feed') ? $('feed').innerHTML : '';
   $('detail').innerHTML = `
-    <h2>${esc(r.project)} ${r.milestone ? '· ' + esc(r.milestone) : ''}</h2>
+    <div class="head"><h2>${esc(r.project)} ${r.milestone ? '· ' + esc(r.milestone) : ''}</h2>
+      <button class="del" data-del="${esc(r.id)}" ${r.state === 'running' ? 'disabled title="A running pipeline cannot be deleted"' : 'title="Delete this run from the dashboard"'}>Delete run</button></div>
     <div class="path">${esc(r.cwd)} · ${esc(r.branch)}${r.from !== 'plan' ? ' · resumed from ' + esc(r.from) : ''}</div>
     ${r.task ? `<div class="msg">${esc(r.task)}</div>` : ''}
     ${r.message && r.state !== 'running' ? `<div class="msg s-${r.state}">${esc(r.message)}</div>` : ''}
@@ -194,14 +202,30 @@ async function tick() {
   try {
     runs = await fetch('/api/runs').then((x) => x.json());
     $('dot').style.background = 'var(--ok)'; $('live').textContent = 'live';
-    if (!selected && runs.length) selected = runs[0].id;
-    renderList(); renderDetail(); await loadEvents();
   } catch {
     $('dot').style.background = 'var(--bad)'; $('live').textContent = 'dashboard stopped';
+    return;
+  }
+  if (!selected && runs.length) selected = runs[0].id;
+  // A malformed record must not blank the page: render each part on its own.
+  for (const part of [renderList, renderDetail, loadEvents]) {
+    try { await part(); } catch (e) { console.error('dashboard render', e); }
   }
 }
 
+async function del(url, question) {
+  if (!confirm(question)) return;
+  const res = await fetch(url, { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { alert('Could not delete (it may still be running).'); return; }
+  selected = null; feedFor = null; openFile = null; history.replaceState(null, '', location.pathname);
+  await tick();
+}
+
 document.addEventListener('click', async (e) => {
+  const d = e.target.closest('[data-del]');
+  if (d) return del(`/api/runs/${d.dataset.del}`, 'Delete this pipeline run from the dashboard? The project files are not touched.');
+  const c = e.target.closest('[data-clear]');
+  if (c) return del(`/api/runs?cwd=${encodeURIComponent(c.dataset.clear)}`, 'Delete every finished run of this project from the dashboard? Running ones are kept. Project files are not touched.');
   const run = e.target.closest('.run');
   if (run) { selected = run.dataset.id; openFile = null; location.hash = 'run=' + selected; renderList(); renderDetail(); loadEvents(); return; }
   const f = e.target.closest('[data-f]');

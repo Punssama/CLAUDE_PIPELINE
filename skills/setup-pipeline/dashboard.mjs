@@ -73,7 +73,16 @@ function listRuns() {
   return files.map((f) => readJson(path.join(RUNS, f))).filter(Boolean).map((r) => {
     if (r.state === 'running' && !alive(r.pid)) r.state = 'stopped'; // runner killed mid-run
     return r;
-  }).sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')).slice(0, 100);
+  }).sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')); // kept until the user deletes them
+}
+
+// Delete finished runs (never a running one). Returns the ids actually deleted.
+function deleteRuns(ids) {
+  const byId = new Map(listRuns().map((r) => [r.id, r]));
+  return ids.filter((id) => ID.test(id) && byId.has(id) && byId.get(id).state !== 'running').map((id) => {
+    for (const ext of ['.json', '.events.jsonl']) fs.rmSync(path.join(RUNS, id + ext), { force: true });
+    return id;
+  });
 }
 
 function send(res, code, body, type = 'application/json') {
@@ -85,10 +94,27 @@ async function serve() {
   fs.mkdirSync(RUNS, { recursive: true });
   const page = fs.readFileSync(path.join(HERE, 'dashboard.html'), 'utf8');
   const server = http.createServer((req, res) => {
+    // Loopback names only: blocks DNS-rebinding pages from reading run data or deleting runs.
+    if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(req.headers.host || '')) return send(res, 403, { error: 'forbidden host' });
     const url = new URL(req.url, 'http://x');
     const p = url.pathname.split('/').filter(Boolean);
     if (url.pathname === '/') return send(res, 200, page, 'text/html');
     if (url.pathname === '/api/ping') return send(res, 200, { ok: true, pid: process.pid });
+    if (req.method === 'DELETE') {
+      // Only this page may delete: DELETE is never a "simple" cross-site request, and the Origin must be ours.
+      const host = `http://${req.headers.host}`;
+      if (req.headers.origin && req.headers.origin !== host) return send(res, 403, { error: 'forbidden' });
+      if (p[0] === 'api' && p[1] === 'runs' && ID.test(p[2] || '') && !p[3]) {
+        const done = deleteRuns([p[2]]);
+        return send(res, done.length ? 200 : 409, done.length ? { deleted: done } : { error: 'not found or still running' });
+      }
+      if (url.pathname === '/api/runs') { // ?cwd=<project path>: every finished run of that project
+        const cwd = url.searchParams.get('cwd');
+        if (!cwd) return send(res, 400, { error: 'cwd required' });
+        return send(res, 200, { deleted: deleteRuns(listRuns().filter((r) => r.cwd === cwd).map((r) => r.id)) });
+      }
+      return send(res, 404, { error: 'not found' });
+    }
     if (url.pathname === '/api/runs') return send(res, 200, listRuns());
     if (p[0] === 'api' && p[1] === 'runs' && ID.test(p[2] || '')) {
       const run = listRuns().find((r) => r.id === p[2]);
