@@ -1,7 +1,8 @@
 // Stand-in for the `claude` executable, driven by a scenario file, so the runner's control flow can be tested without a model.
 //   FAKE_SCENARIO: JSON { <kind>: [ { writes: { path: content }, remove: [path], commit: false } ] }  (the n-th call of a kind uses the n-th entry)
+//   an entry may also set result: the final message the step "says" (default "fake <kind> done")
 //   FAKE_LOG: every call is appended there as { kind, args, prompt }
-// kinds: plan | repair | build | fix-gates | fix-review | review | commit
+// kinds: plan | repair | critique | build | fix-gates | fix-review | review | commit
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -9,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 const args = process.argv.slice(2);
 const prompt = fs.readFileSync(0, 'utf8');
 const kind = /already exists but fails these automated checks/.test(prompt) ? 'repair'
+  : /is a first draft/.test(prompt) ? 'critique'
   : /create a git commit/.test(prompt) ? 'commit'
   : /Review the uncommitted changes/.test(prompt) ? 'review'
   : /quality gates failed/.test(prompt) ? 'fix-gates'
@@ -26,4 +28,4 @@ if (kind === 'commit' && act.commit !== false) {
   spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'fake commit']);
 }
 console.log(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: `fake ${kind}` }] } }));
-console.log(JSON.stringify({ type: 'result', is_error: false, result: `fake ${kind} done`, total_cost_usd: 0.01 }));
+console.log(JSON.stringify({ type: 'result', is_error: false, result: act.result ?? `fake ${kind} done`, total_cost_usd: 0.01 }));

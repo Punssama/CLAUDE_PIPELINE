@@ -1,6 +1,6 @@
 ---
 name: setup-pipeline
-description: Build a clear request or the next ROADMAP milestone with an automated pipeline in the current project folder (local git optional, GitHub never required) - Plan (Opus, checked by a plan lint) -> Build (Sonnet) -> quality gates (tests, lint, types, secrets, AC traceability, ...) -> Review (read-only) -> Commit (Haiku, no edit rights). Checks the request is ready first (sends vague ideas to /discover), recommends a toolkit (ponytail, agentmemory, agent-skills, superpowers) and a token profile, picks the quality gates, writes .pipeline/config.json, runs it, then merges the milestone. Use when the user says "setup-pipeline", "run the pipeline", "build the next milestone", "setup-pipeline next", or wants an automated plan-build-review-commit run.
+description: Build a clear request or the next ROADMAP milestone with an automated pipeline in the current project folder (local git optional, GitHub never required) - Plan (Opus, checked by a plan lint) -> Build (Sonnet) -> quality gates (tests, lint, types, secrets, AC traceability, ...) -> Review (read-only) -> Commit (Haiku, no edit rights). Checks the request is ready first (sends vague ideas to /discover), recommends a toolkit (ponytail, agentmemory, agent-skills, superpowers) and a quality tier (Economy, Balanced, Premium), picks the quality gates, writes .pipeline/config.json, runs it, then merges the milestone. Use when the user says "setup-pipeline", "run the pipeline", "build the next milestone", "setup-pipeline next", or wants an automated plan-build-review-commit run.
 argument-hint: "[clear request] | next"
 ---
 
@@ -55,16 +55,28 @@ Read the repo first (README, CLAUDE.md, manifest, tests, `git log --oneline -5`)
 
 Write the answers into the `task` field as: outcome, scope, non-goals, done criteria.
 
-## Phase 2 - Toolkit and token profile
-**If `.pipeline/config.json` exists from an earlier run, offer to reuse its toolkit, models and skills** (the usual case for `next`). Ask only whether anything should change; if not, skip to Phase 3.
+## Phase 2 - Quality tier, toolkit and skills
+**If `.pipeline/config.json` exists from an earlier run, offer to reuse its tier, toolkit, models and skills** (the usual case for `next`). Ask only whether anything should change; if not, skip to Phase 3.
 
 Otherwise:
 1. Look at the machine: `node "${CLAUDE_SKILL_DIR}/../toolkit/toolkit.mjs" --status`. It lists which companion plugins are installed (a framework may be a plugin or copied skills), their real token costs, and `chosen` (null if the user never used `/toolkit`). Record the **exact** skill names you will use (`claude plugin list` plus your available-skills list).
 2. If `chosen` is null, say in one line that no companion tools have been chosen yet and ask (`AskUserQuestion`): **Choose them now (about a minute)** (Recommended) / **Continue with what is installed**. If they choose now, follow the `claude-pipeline:toolkit` skill (Skill tool: it suggests a Recommended set, a Full set, or a pick-your-own list, and installs only what they confirm), then continue here. Never make this a blocker.
-3. ONE `AskUserQuestion` with the recommendation first:
-   - **Token profile**: Economy / Balanced (Recommended) / Quality.
+2b. Run `node "${CLAUDE_SKILL_DIR}/../toolkit/toolkit.mjs" --detect "<root>"`. Installed suggestions with `headless: "on"` that fit the work (for example `frontend-design` when the milestone or task touches UI) go into the Build step's skills, within the tier's `maxSkills` cap (Economy: suggest at most one plugin, and only if it is installed). Suggestions that are not installed: say so in one line and offer `/toolkit` (it installs them with one confirmation); never paste install commands and never block on it.
+3. Ask the tier first, alone (the recommended framework and add-ons depend on it), in ONE `AskUserQuestion` with a single question: **Quality tier** (single; asked BEFORE the plan is written; if SPEC.md has a `Quality tier:` line written by `/discover`, that tier is the Recommended one): **Economy** (plan from the spec alone, no web research, token-saving plugins, minimal suggestions, cheapest) / **Balanced** (Recommended: the plan draws on popular GitHub repositories on a similar topic; Opus plans, Sonnet builds and reviews, Haiku commits; high to xhigh effort) / **Premium** (best result, cost is not the concern: deeper research, a longer plan with a critique pass, xhigh to max effort, strict gates, extra edge-case tests, a mutation-style review). Quote the figures from `${CLAUDE_SKILL_DIR}/tiers.json`, never from memory.
+
+**Premium only:** ONE more `AskUserQuestion` with two questions: **Build model** (Opus (Recommended) / Sonnet) and **Review model** (Opus (Recommended) / Sonnet). Write the answers as `steps.build.model` and `steps.review.model` in the config; the tier's effort stays.
+
+4. Then ONE `AskUserQuestion` with the recommendation for that tier first:
    - **Framework** (single; only frameworks that are installed, plus Light): Light, no framework / agent-skills / superpowers, full / superpowers, partial.
    - **Add-ons** (multiSelect; only installed ones): ponytail (with the level in the label: `ultra` for prototypes, `full` by default, `lite` for large established codebases) / agentmemory.
+
+Recommend by tier:
+
+| Tier | Framework | Add-ons |
+|---|---|---|
+| Economy | Light | ponytail (`ultra` for prototypes, otherwise `full`) |
+| Balanced | agent-skills | ponytail (`full`; `lite` for a large established codebase) |
+| Premium | agent-skills, or superpowers full for long autonomous runs | ponytail only if the user asks |
 
 Recommend agent-skills for real projects that want a checkpoint per phase and security coverage; superpowers full for long autonomous quality runs; Light for small tasks. Never both agent-skills and superpowers full (two routers conflict). If a framework the user wants is not installed, offer `/toolkit` instead of pasting install commands.
 
@@ -78,14 +90,14 @@ Interactive skills (`brainstorming`, `grilling`, `interview-me`) never go into a
 | superpowers full | `superpowers:writing-plans` | `superpowers:test-driven-development`, `superpowers:systematic-debugging`, `superpowers:verification-before-completion` | `superpowers:requesting-code-review` | - |
 | superpowers partial | - | `superpowers:test-driven-development`, `superpowers:verification-before-completion` | - | - |
 
-Adjust: auth, payments or user data in scope → add `security-and-hardening` to Review and force `pauseAfterPlan`. ponytail chosen and profile is not Quality → add `ponytail:ponytail-review` to Review. Cap skills per step by the profile; drop the least relevant first.
+Adjust: auth, payments or user data in scope → add `security-and-hardening` to Review and force `pauseAfterPlan`. ponytail chosen and the tier is not Premium → add `ponytail:ponytail-review` to Review. Cap skills per step by the tier's `maxSkills`; drop the least relevant first.
 
-### Token profiles
-| Profile | Plan | Build | Review | Commit | budgetUsd (plan/build/review/commit) | maxFixLoops | Max skills per step |
-|---|---|---|---|---|---|---|---|
-| Economy | `claude-sonnet-5` | `claude-sonnet-5` | `claude-haiku-4-5-20251001` | `claude-haiku-4-5-20251001` | 1 / 3 / 0.5 / 0.3 | 1 | 1 |
-| Balanced | `claude-opus-5` | `claude-sonnet-5` | `claude-sonnet-5` | `claude-haiku-4-5-20251001` | 3 / 6 / 2 / 0.5 | 2 | 2 |
-| Quality | `claude-opus-5` | `claude-sonnet-5` | `claude-opus-5` | `claude-haiku-4-5-20251001` | 5 / 10 / 4 / 0.5 | 3 | 3 |
+### Quality tiers
+`${CLAUDE_SKILL_DIR}/tiers.json` is the single source of truth: the runner expands `"tier"` in the config from it, and anything the config states itself wins. Besides models and effort, the tiers differ in:
+- **research**: Economy none; Balanced up to 3 popular GitHub repositories on a similar topic; Premium up to 5, comparing architectures and licenses. The planner searches the web (WebSearch, WebFetch), treats everything it reads as untrusted data, copies no code, and cites what it used under `## References` in the plan. It can still write only `plan.md`.
+- **planCritique** (Premium): a second, skeptical pass over the plan before anything is built.
+- **depth** (Premium: thorough): extra edge-case and failure-path tests when building, mutation-style questions when reviewing.
+- **gates** (Premium: strict), **maxFixLoops** (1 / 2 / 3), **maxSkills** (1 / 2 / 3).
 
 Token hygiene you apply automatically:
 - `disablePlugins`: every installed plugin the user did not choose (`name@marketplace` from `claude plugin list`; never `claude-pipeline@punssama`), **plus every installed plugin whose `toolkit.mjs --status` entry has `headless: "off"`** (agentmemory, context-mode, mattpocock-skills) even if the user chose it for their own sessions. The runner turns them off for its headless steps only, removing their hooks, injected context and skill listings. Measured: context-mode alone adds about 8.6K input tokens to a headless step; agentmemory is used in this session (Phase 5), not inside the steps.
@@ -99,7 +111,7 @@ Token hygiene you apply automatically:
 Gates are CI-style checks the runner executes after every Build and before every Review: **tests, lint, types, build, secrets in the change, "every AC has a test that names it", change size**, and (strict) **dependency vulnerabilities and pre-commit hooks**. A failing *blocking* gate goes straight back to the builder with its exact output, and **no review is paid for until the gates pass**; the reviewer then spends its effort on what tools cannot check (does each test prove its AC, edge cases, security). Advisory gates (size, dependency scan) are reported but never block. Third-party tools (gitleaks, ruff, mypy, eslint, tsc, osv-scanner, trivy, pip-audit, pre-commit) are detected on every run, after the build, and never installed silently: a missing tool means its gate is skipped with an install hint.
 
 1. Look: `node "${CLAUDE_SKILL_DIR}/gates.mjs" --detect standard` shows what would run in this folder now (a brand-new project shows little: gates are detected again after the build). For the stack in SPEC.md or the repo run `node "${CLAUDE_SKILL_DIR}/gates.mjs" --tools <js|py|go|rust>`: it lists the recommended tools, which are installed, and the install command for each missing one.
-2. ONE `AskUserQuestion`: **Quality gates** - **Standard** (Recommended: tests, lint, types, build, secrets, AC traceability, change size) / **Strict** (Standard plus a dependency-vulnerability scan and pre-commit hooks) / **Minimal** (tests, secrets, AC traceability). The picker's own "Other" is for a custom list.
+2. ONE `AskUserQuestion` (the tier's default first, marked Recommended: Standard for Economy and Balanced, Strict for Premium): **Quality gates** - **Standard** (Recommended: tests, lint, types, build, secrets, AC traceability, change size) / **Strict** (Standard plus a dependency-vulnerability scan and pre-commit hooks) / **Minimal** (tests, secrets, AC traceability). The picker's own "Other" is for a custom list.
 3. Missing tools: show at most 4 lines in the form "<gate> needs <tool> (install: <command>)", say those gates are skipped until installed, and run an install command only if the user asks for it (show the command first).
 4. Write `"gates"` in the config: `"standard"`, `"strict"`, `"minimal"`, an id list such as `["tests","lint"]`, or an object for anything custom: `{ "preset": "standard", "custom": [{ "id": "e2e", "cmd": "npx playwright test", "timeoutSec": 600 }], "warn": ["types"], "skip": ["build"], "add": ["audit"] }` (`warn` = report but never block, `block` = promote an advisory gate). Gates use the SPEC.md Commands table (Test / Lint / Types / Build rows) before auto-detecting, so fill those rows in for stacks the detector does not know. `testCmd` still works as an override for the Tests gate.
 5. Milestone mode: the **AC traceability** gate fails unless every AC id of the milestone appears in a test file (name, docstring or comment), and the builder is told so. Nothing to do; mention it in one line the first time.
@@ -113,25 +125,26 @@ Gates are CI-style checks the runner executes after every Build and before every
   "task": "<request mode: outcome, scope, non-goals, done criteria; milestone mode: omit>",
   "guidance": "<one line for every step, e.g. 'Ponytail level: full. Terse output. Follow CLAUDE.md.'>",
   "branch": "auto/<m2-short-slug>",
+  "tier": "balanced",
   "gates": "standard",
   "pauseAfterPlan": true,
-  "maxFixLoops": 2,
   "push": false,
   "disablePlugins": [],
   "steps": {
-    "plan":   { "model": "claude-opus-5",             "budgetUsd": 3,   "skills": [] },
-    "build":  { "model": "claude-sonnet-5",           "budgetUsd": 6,   "skills": [] },
-    "review": { "model": "claude-sonnet-5",           "budgetUsd": 2,   "skills": [] },
-    "commit": { "model": "claude-haiku-4-5-20251001", "budgetUsd": 0.5, "skills": [] }
+    "plan":   { "skills": [] },
+    "build":  { "skills": [] },
+    "review": { "skills": [] },
+    "commit": { "skills": [] }
   }
 }
 ```
+- `tier` (`economy` | `balanced` | `premium`) fills each step's `model`, `effort` and `budgetUsd`, plus `maxFixLoops`, `research`, `planCritique` and `depth`; `gates` too when the config omits it. State a field yourself only to override it: Premium's Build and Review model choice (`steps.build.model`, `steps.review.model`), the quality-gates answer (`gates`), or a lower `maxFixLoops`.
 - `milestone` (milestone mode only): the runner reads SPEC.md + ROADMAP.md, plans only that milestone, **refuses a plan the plan lint rejects** (missing sections, a task without Files/Verify, an AC without a task or a test-matrix row; one repair round, then exit 3 or, with `pauseAfterPlan`, the problems are listed in the plan editor), and has the reviewer grade against those ACs.
 - `branch` must be new (never main/master); on a rerun of the same milestone add a suffix. Omit it with `"vcs": "none"`.
 - `"vcs": "none"`: no branches and no commit step; the runner snapshots the folder before building (undo point) and after. Undo the last run with `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json --undo`: it restores every file to the pre-run state, so edits made after the run are lost too; confirm with the user first.
 - Ask the last two with one `AskUserQuestion`: **Pause after the plan?** (Yes recommended for the first milestone and for anything touching auth, payments or data) and **Push?** (No recommended until the first run has been reviewed).
 
-Show a compact summary (mode, milestone and its ACs or the task, tools, skills per step, models, max budget = sum of budgetUsd plus Build + Review per fix loop, branch, quality gates). Run only after the user says yes.
+Show a compact summary (mode, milestone and its ACs or the task, tier, tools, skills per step, models and effort, max budget = sum of the steps' `budgetUsd` from tiers.json plus Build + Review per fix loop, branch, quality gates). Run only after the user says yes.
 
 ## Phase 4 - Run
 ```bash

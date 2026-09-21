@@ -1,0 +1,101 @@
+{
+  "about": "Quality tiers, chosen before the plan. The runner fills any field the config leaves out from the tier (models, effort, budgetUsd per step, maxFixLoops, gates, research, planCritique, depth); a field the config states itself wins. maxSkills is read by /setup-pipeline (skills per step), not by the runner. effort: low | medium | high | xhigh | max. research: none | github (up to 3 popular repos) | deep (up to 5, compares architectures and licenses). depth: standard | thorough (extra edge-case tests when building, mutation-style questions when reviewing).",
+  "tiers": {
+    "economy": {
+      "label": "Economy",
+      "about": "Plan written from the spec alone (no outside sources), token-saving plugins, minimal suggestions. Cheapest.",
+      "research": "none",
+      "planCritique": false,
+      "depth": "standard",
+      "gates": "standard",
+      "maxFixLoops": 1,
+      "maxSkills": 1,
+      "steps": {
+        "plan": {
+          "model": "claude-sonnet-5",
+          "effort": "medium",
+          "budgetUsd": 1
+        },
+        "build": {
+          "model": "claude-sonnet-5",
+          "effort": "medium",
+          "budgetUsd": 3
+        },
+        "review": {
+          "model": "claude-haiku-4-5-20251001",
+          "effort": "medium",
+          "budgetUsd": 0.5
+        },
+        "commit": {
+          "model": "claude-haiku-4-5-20251001",
+          "effort": "low",
+          "budgetUsd": 0.3
+        }
+      }
+    },
+    "balanced": {
+      "label": "Balanced",
+      "about": "Plan informed by popular GitHub repositories on a similar topic. Opus plans, Sonnet builds and reviews, Haiku commits, at high to xhigh effort; plugins that keep tokens in check.",
+      "research": "github",
+      "planCritique": false,
+      "depth": "standard",
+      "gates": "standard",
+      "maxFixLoops": 2,
+      "maxSkills": 2,
+      "steps": {
+        "plan": {
+          "model": "claude-opus-5",
+          "effort": "xhigh",
+          "budgetUsd": 3
+        },
+        "build": {
+          "model": "claude-sonnet-5",
+          "effort": "high",
+          "budgetUsd": 6
+        },
+        "review": {
+          "model": "claude-sonnet-5",
+          "effort": "high",
+          "budgetUsd": 2
+        },
+        "commit": {
+          "model": "claude-haiku-4-5-20251001",
+          "effort": "low",
+          "budgetUsd": 0.5
+        }
+      }
+    },
+    "premium": {
+      "label": "Premium",
+      "about": "Best result, cost is not the concern. Deeper research on popular repositories, a longer plan with a second critique pass, xhigh to max effort, strict quality gates, extra edge-case tests and a mutation-style review. Build and Review run on Opus or Sonnet, your choice.",
+      "research": "deep",
+      "planCritique": true,
+      "depth": "thorough",
+      "gates": "strict",
+      "maxFixLoops": 3,
+      "maxSkills": 3,
+      "steps": {
+        "plan": {
+          "model": "claude-opus-5",
+          "effort": "max",
+          "budgetUsd": 6
+        },
+        "build": {
+          "model": "claude-opus-5",
+          "effort": "xhigh",
+          "budgetUsd": 12
+        },
+        "review": {
+          "model": "claude-opus-5",
+          "effort": "max",
+          "budgetUsd": 6
+        },
+        "commit": {
+          "model": "claude-haiku-4-5-20251001",
+          "effort": "low",
+          "budgetUsd": 0.5
+        }
+      }
+    }
+  }
+}

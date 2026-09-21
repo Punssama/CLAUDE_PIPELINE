@@ -136,6 +136,103 @@
       "measured": true,
       "headless": "off",
       "presets": []
+    },
+    {
+      "id": "frontend-design",
+      "plugin": "frontend-design@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "frontend-design",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "web-ui"
+      ],
+      "does": "Guidance for distinctive, polished UI design instead of templated defaults.",
+      "forPipeline": "Add it to the Build step skills for UI work (the benchmark UI redesign used it).",
+      "alwaysOnTokens": null,
+      "measured": false,
+      "headless": "on",
+      "presets": []
+    },
+    {
+      "id": "typescript-lsp",
+      "plugin": "typescript-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "typescript-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "typescript"
+      ],
+      "does": "Code intelligence for TypeScript / JavaScript (go-to-definition, diagnostics) through the typescript-language-server language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": null,
+      "measured": false,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs typescript-language-server installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "pyright-lsp",
+      "plugin": "pyright-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "pyright-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "python"
+      ],
+      "does": "Code intelligence for Python (go-to-definition, diagnostics) through the pyright language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": null,
+      "measured": false,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs pyright installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "gopls-lsp",
+      "plugin": "gopls-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "gopls-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "go"
+      ],
+      "does": "Code intelligence for Go (go-to-definition, diagnostics) through the gopls language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": null,
+      "measured": false,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs gopls installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "rust-analyzer-lsp",
+      "plugin": "rust-analyzer-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "rust-analyzer-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "rust"
+      ],
+      "does": "Code intelligence for Rust (go-to-definition, diagnostics) through the rust-analyzer language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": null,
+      "measured": false,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs rust-analyzer installed on this machine; the plugin only connects to it."
+      ]
     }
   ]
 }

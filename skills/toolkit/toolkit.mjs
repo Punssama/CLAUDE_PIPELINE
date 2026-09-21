@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Companion-plugin helper behind /toolkit. Only plugins listed in catalog.json can ever be installed.
 //   node toolkit.mjs --status [--tokens]        JSON: environment, what is installed, unmet requirements, presets
+//   node toolkit.mjs --detect [dir]             JSON: stacks found in the folder + catalog plugins that fit them (not yet installed)
 //   node toolkit.mjs --install id[,id...]       marketplace add + install for each catalog id; JSON result per plugin
 //   node toolkit.mjs --record <preset> [ids]    remember the choice (preset: recommended | full | custom | skip)
 //   node toolkit.mjs --nudge                    SessionStart hook: a one-time "run /toolkit" hint for the user
@@ -9,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { detectStacks } from './detect.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOME = process.env.CLAUDE_PIPELINE_HOME || path.join(os.homedir(), '.claude-pipeline');
@@ -70,6 +72,16 @@ function status(withTokens) {
   return { env: { node: process.versions.node, platform: process.platform }, chosen: readJson(CHOICE), presets, plugins };
 }
 
+// Scan a folder and match its stacks to catalog plugins (`stacks` field). Suggest-only: nothing is installed here.
+function detect(dir) {
+  const stacks = detectStacks(path.resolve(dir || '.'));
+  const have = installedPlugins();
+  const suggestions = catalog.plugins.filter((e) => e.stacks?.some((s) => stacks.some((d) => d.stack === s)))
+    .map((e) => ({ id: e.id, title: e.title, does: e.does, license: e.license, headless: e.headless, notes: e.notes || [], unmet: unmetOf(e),
+      because: stacks.filter((d) => e.stacks.includes(d.stack)), installed: have.has(e.plugin) || looseInstalled(e) }));
+  return { stacks, suggestions };
+}
+
 function install(ids) {
   const results = [];
   for (const id of ids) {
@@ -90,6 +102,7 @@ function install(ids) {
 
 const [cmd, ...args] = process.argv.slice(2);
 if (cmd === '--status') out(status(args.includes('--tokens')));
+else if (cmd === '--detect') out(detect(args[0]));
 else if (cmd === '--install') out(install((args[0] || '').split(',').map((s) => s.trim()).filter(Boolean)));
 else if (cmd === '--record') {
   fs.mkdirSync(HOME, { recursive: true });
@@ -105,6 +118,6 @@ else if (cmd === '--record') {
     out({ systemMessage: 'claude-pipeline is installed. Optional: type /toolkit to choose companion plugins (about a minute: recommended set, everything, or pick), or /discover to start a project.' });
   } catch { /* stay silent */ }
 } else {
-  console.error('usage: toolkit.mjs --status [--tokens] | --install id[,id] | --record <preset> [ids] | --nudge');
+  console.error('usage: toolkit.mjs --status [--tokens] | --detect [dir] | --install id[,id] | --record <preset> [ids] | --nudge');
   process.exit(1);
 }

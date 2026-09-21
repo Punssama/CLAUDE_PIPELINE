@@ -21,6 +21,9 @@ One line per plugin: name, what it does *for them* (`does`), `+N tokens/session`
 - **context-mode** (a source-available plugin, Elastic License 2.0): it protects the context window from huge tool output (web pages, logs, large files). Measured in this pipeline's headless steps it adds about 8.6K input tokens per step and saves nothing on small outputs, so the pipeline keeps it OFF in its own steps. It pays off in long interactive sessions with big outputs. Needs Node 22.5+.
 - superpowers and agent-skills are alternatives (two routers on one task conflict): Full and Recommended use agent-skills.
 
+## 2b. Scan the project for stack-specific plugins
+Run `node "${CLAUDE_SKILL_DIR}/toolkit.mjs" --detect "<project root>"` (a folder with no code yet is read from its `SPEC.md`). It returns `stacks` (each with `why`, the first signal that matched) and `suggestions`: catalog plugins whose `stacks` fit, with `installed`, `license`, `notes` and `unmet`. Drop the installed and `unmet` ones. If any are left, list them in one line each ("<title>: <does> (because <why>)"), then ONE multiSelect `AskUserQuestion` (**Add these?**, header `Stack`), none pre-selected. Add the chosen ids to the choice below and go through steps 4-6 with them. Nothing found or nothing new: say nothing. Suggest-only: this scan never installs on its own.
+
 ## 3. Let them choose
 If `$ARGUMENTS` is `recommended`, `full` or `skip`, take it without asking. Otherwise ONE `AskUserQuestion`:
 - **Recommended set** (Recommended)

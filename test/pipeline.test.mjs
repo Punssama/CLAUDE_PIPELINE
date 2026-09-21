@@ -216,3 +216,99 @@ test('legacy configs (testCmd only, no gates) still gate on the test command', (
   assert.equal(r.code, 0, r.out);
   assert.deepEqual(gateRows(r.status, 0), [['tests', 'fail']]);
 });
+
+// ---- quality tiers, plan research, and the reviewer's file write --------------------------------
+const argOf = (call, flag) => call.args[call.args.indexOf(flag) + 1];
+const tierCfg = (tier, extra = {}) => ({ tier, steps: {}, maxFixLoops: undefined, gates: 'minimal', ...extra }); // minimal gates keep these tests off the network
+const okPlan = { '.pipeline/plan.md': plan() };
+
+test('tiers.json is well formed: every tier defines all four steps with a model, a valid effort and a budget', () => {
+  const { tiers } = JSON.parse(fs.readFileSync(path.join(ROOT, 'skills', 'setup-pipeline', 'tiers.json'), 'utf8'));
+  assert.deepEqual(Object.keys(tiers), ['economy', 'balanced', 'premium']);
+  for (const [name, t] of Object.entries(tiers)) {
+    assert.deepEqual(Object.keys(t.steps), ['plan', 'build', 'review', 'commit'], name);
+    for (const s of Object.values(t.steps)) { assert.match(s.model, /^claude-/); assert.ok(['low', 'medium', 'high', 'xhigh', 'max'].includes(s.effort)); assert.ok(s.budgetUsd > 0); }
+    assert.ok(['none', 'github', 'deep'].includes(t.research)); assert.ok(['standard', 'thorough'].includes(t.depth)); assert.ok(t.maxFixLoops >= 1 && t.maxSkills >= 1);
+  }
+});
+
+test('economy: the plan comes from the spec alone (no web tools), cheap models, medium effort', () => {
+  const r = pipeline({ cfg: tierCfg('economy'), scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ writes: PASS }] } }).go();
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.kinds, ['plan', 'build', 'review', 'commit']);
+  const [pl, , re, co] = r.calls;
+  assert.equal(argOf(pl, '--model'), 'claude-sonnet-5'); assert.equal(argOf(pl, '--effort'), 'medium');
+  assert.equal(argOf(re, '--model'), 'claude-haiku-4-5-20251001'); assert.equal(argOf(co, '--effort'), 'low');
+  assert.doesNotMatch(argOf(pl, '--tools'), /Web/); assert.doesNotMatch(pl.prompt, /Research first/);
+  assert.equal(r.status.maxFixLoops, 1);
+});
+
+test('balanced: the planner may search GitHub and cite what it learned; three models at high to xhigh effort', () => {
+  const r = pipeline({ cfg: tierCfg('balanced'), scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ writes: PASS }] } }).go();
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.kinds, ['plan', 'build', 'review', 'commit']);          // no critique pass below premium
+  const [pl, bu, re] = r.calls;
+  assert.deepEqual([argOf(pl, '--model'), argOf(pl, '--effort')], ['claude-opus-5', 'xhigh']);
+  assert.deepEqual([argOf(bu, '--model'), argOf(bu, '--effort')], ['claude-sonnet-5', 'high']);
+  assert.match(argOf(pl, '--tools'), /WebSearch,WebFetch/); assert.match(argOf(pl, '--allowedTools'), /WebSearch,WebFetch/);
+  assert.match(pl.prompt, /up to 3 popular open-source GitHub repositories/); assert.match(pl.prompt, /## References/); assert.match(pl.prompt, /untrusted data/);
+  assert.doesNotMatch(bu.prompt, /Test thoroughly/); assert.doesNotMatch(re.prompt, /Mutation check/);
+});
+
+test('premium: deeper research, a critique pass on the plan, thorough tests and review', () => {
+  const r = pipeline({ cfg: tierCfg('premium', { gates: 'minimal' }), scenario: { plan: [{ writes: okPlan }], critique: [{}], build: [{ writes: GOOD }], review: [{ writes: PASS }] } }).go();
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.kinds, ['plan', 'critique', 'build', 'review', 'commit']);
+  const [pl, cr, bu, re] = r.calls;
+  assert.deepEqual([argOf(pl, '--model'), argOf(pl, '--effort')], ['claude-opus-5', 'max']);
+  assert.match(pl.prompt, /up to 5 popular/); assert.match(pl.prompt, /compare at least two different architectures/);
+  assert.match(cr.prompt, /skeptical staff engineer/); assert.equal(argOf(cr, '--effort'), 'max');
+  assert.equal(argOf(bu, '--effort'), 'xhigh'); assert.match(bu.prompt, /Test thoroughly/);
+  assert.equal(argOf(re, '--effort'), 'max'); assert.match(re.prompt, /Mutation check/);
+  assert.equal(r.status.steps.plan.runs, 2); assert.equal(r.status.maxFixLoops, 3);
+});
+
+test('explicit settings beat the tier: the user\'s Sonnet for build and review, their own fix-loop cap', () => {
+  const r = pipeline({ cfg: tierCfg('premium', { steps: { build: { model: 'claude-sonnet-5' }, review: { model: 'claude-sonnet-5', effort: 'xhigh' } }, maxFixLoops: 1 }),
+    scenario: { plan: [{ writes: okPlan }], critique: [{}], build: [{ writes: GOOD }], review: [{ writes: PASS }] } }).go();
+  assert.equal(r.code, 0, r.out);
+  const [, , bu, re] = r.calls;
+  assert.deepEqual([argOf(bu, '--model'), argOf(bu, '--effort')], ['claude-sonnet-5', 'xhigh']); // the user's model, the tier's effort
+  assert.deepEqual([argOf(re, '--model'), argOf(re, '--effort')], ['claude-sonnet-5', 'xhigh']);
+  assert.equal(r.status.maxFixLoops, 1);
+});
+
+test('the tier supplies the quality gates when the config names none', () => {
+  const r = pipeline({ cfg: tierCfg('economy', { gates: undefined }), scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ writes: PASS }] } }).go();
+  assert.equal(r.code, 0, r.out);
+  assert.ok(r.status.gates[0].results.some((g) => g.id === 'size'), 'the standard preset ran, not the minimal one');
+});
+
+test('an unknown tier is refused before any model is called', () => {
+  const r = pipeline({ cfg: tierCfg('ultra'), scenario: {} }).go();
+  assert.equal(r.code, 1);
+  assert.deepEqual(r.kinds, []);
+  assert.match(r.out, /unknown tier "ultra"/);
+});
+
+test('the reviewer may only write review.md, by a rule anchored at the project root (a cd in its shell must not break it)', () => {
+  const r = pipeline({ scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ writes: PASS }] } }).go();
+  assert.match(argOf(r.calls[2], '--allowedTools'), /Edit\(\/\.pipeline\/review\.md\)/);
+  assert.match(argOf(r.calls[0], '--allowedTools'), /Edit\(\/\.pipeline\/plan\.md\)/);
+  assert.doesNotMatch(argOf(r.calls[2], '--allowedTools'), /Edit\(\.pipeline/);
+});
+
+test('a reviewer that could not write review.md but states a verdict in its final message is not a failed run', () => {
+  const r = pipeline({ scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ result: '**Verdict: PASS.**\nI could not write the file. Critical: none.' }] } }).go();
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /using its final message as the review/);
+  assert.match(fs.readFileSync(path.join(r.d, '.pipeline', 'review.md'), 'utf8'), /Verdict: PASS/);
+  assert.deepEqual(r.status.reviews.map((x) => x.pass), [true]);
+});
+
+test('a salvaged FAIL verdict still fails: the fix round runs, nothing is silently passed', () => {
+  const r = pipeline({ cfg: { maxFixLoops: 1 }, scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ result: 'Verdict: FAIL\nsrc/greet.mjs:1 never validates name' }, { writes: PASS }], 'fix-review': [{}] } }).go();
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.kinds, ['plan', 'build', 'review', 'fix-review', 'review', 'commit']);
+  assert.deepEqual(r.status.reviews.map((x) => x.pass), [false, true]);
+});

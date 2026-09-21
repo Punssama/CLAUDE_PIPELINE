@@ -120,7 +120,7 @@ It does not dead-end: typing `/setup-pipeline` or `/setup-pipeline next` in a pr
 |---|---|---|
 | 0. Get ready | Finds the project and fixes blockers after asking: no git yet, uncommitted changes, a previous run left on its `auto/...` branch | Pick a fix (one is recommended) |
 | 1. Mode | Milestone (SPEC + ROADMAP exist) or request (readiness gate) | Answer ≤ 3 questions if needed |
-| 2. Toolkit | Token profile, framework, add-ons; reuses the previous run's choices on `next` | Choose |
+| 2. Tier + toolkit | Quality tier (Economy / Balanced / Premium), then framework and add-ons; reuses the previous run's choices on `next` | Choose |
 | 3. Gates + config | Shows which quality gates would run and which tools are missing, then writes `.pipeline/config.json` with a summary of the max budget | Pick Standard / Strict / Minimal, confirm |
 | 4. Run | Plan → plan check → Build → gates → Review → Commit on a new `auto/...` branch | Approve the plan if you chose to pause |
 | 5. Merge | Merges the branch into main, ticks the milestone in ROADMAP.md, saves the outcome to agentmemory if used | Confirm the merge |
@@ -252,15 +252,23 @@ The editor runs the same **plan check** as the runner on what you type (a moment
 
 Each run keeps its own copy of the plan, review and gate output, so old runs always show what *they* saw; a run that built from a plan you edited is marked, with the diff. The dashboard never launches anything by itself, and edits and decisions are only accepted from the dashboard page itself.
 
-### Token profiles
+### Quality tiers
 
-| Profile | Plan | Build | Review | Commit | Fix loops | Max budget per run* |
-|---|---|---|---|---|---|---|
-| Economy | Sonnet 5 | Sonnet 5 | Haiku 4.5 | Haiku 4.5 | 1 | ~$4.80 |
-| Balanced | Opus 5 | Sonnet 5 | Sonnet 5 | Haiku 4.5 | 2 | ~$11.50 |
-| Quality | Opus 5 | Sonnet 5 | Opus 5 | Haiku 4.5 | 3 | ~$19.50 |
+You pick a tier before the plan is written (`/discover` asks it too and records it in `SPEC.md`, so you are asked once). The tiers live in `skills/setup-pipeline/tiers.json`; the config only says `"tier": "balanced"` and states a field itself to override it.
 
-\* Sum of the four per-step caps, before fix loops (each loop adds Build + Review). It is a **ceiling**; real runs usually cost much less.
+| | Economy | Balanced (default) | Premium |
+|---|---|---|---|
+| Plan source | The spec alone, no outside sources | Plus up to 3 popular GitHub repositories on a similar topic, cited under `## References` | Plus up to 5, comparing architectures and licenses, then a second **critique pass** over the plan |
+| Models: Plan / Build / Review / Commit | Sonnet 5 / Sonnet 5 / Haiku 4.5 / Haiku 4.5 | Opus 5 / Sonnet 5 / Sonnet 5 / Haiku 4.5 | Opus 5 / **Opus or Sonnet** (your choice) / **Opus or Sonnet** (your choice) / Haiku 4.5 |
+| Effort: Plan / Build / Review | medium / medium / medium | xhigh / high / high | max / xhigh / max |
+| Testing | Standard gates | Standard gates | **Strict** gates, extra edge-case and failure-path tests, a mutation-style review |
+| Fix loops, skills per step | 1, 1 | 2, 2 | 3, 3 |
+| Suggestions (stack, plugins) | One stack, at most one plugin | Options table, plugins that fit | Options table with a real reference repository each, plugins that fit |
+| Max budget per run* | ~$4.80 | ~$11.50 | ~$24.50 (+ up to $6 for the critique pass) |
+
+\* Sum of the four per-step caps, before fix loops (each loop adds Build + Review). It is a **ceiling**; real runs usually cost much less. Premium is for when the result matters more than the bill.
+
+**Plan research is read-only and untrusted.** The planner searches with WebSearch and WebFetch, treats everything it reads as data (never instructions), copies no code (licenses differ) and keeps only ideas; it can still write nothing but `plan.md`.
 
 Other ways it saves tokens: **quality gates and the plan check run on your machine and cost no tokens**, and a failing gate goes back to the builder without a review being paid for; every step skips the machine's MCP servers (measured about 5K input tokens per step); interactive questions happen once in `/discover` instead of the headless steps guessing; the headless steps read a short `SPEC.md` instead of a chat history; plugins you did not choose are switched off for the headless steps (`disablePlugins`); skills per step are capped; `CLAUDE.md` is kept short.
 
@@ -288,9 +296,9 @@ Written by `/setup-pipeline`; you can edit it and rerun.
   "task": "request mode: outcome, scope, non-goals, done criteria",
   "guidance": "Ponytail level: full. Terse output.",
   "branch": "auto/m2-combat",
+  "tier": "balanced",
   "gates": "standard",
   "pauseAfterPlan": true,
-  "maxFixLoops": 2,
   "push": false,
   "disablePlugins": ["superpowers@superpowers-marketplace"],
   "steps": {
@@ -305,6 +313,7 @@ Written by `/setup-pipeline`; you can edit it and rerun.
 | Field | Meaning |
 |---|---|
 | `vcs` | `git` (default) or `none` for a plain folder without git |
+| `tier` | `economy`, `balanced` or `premium`: fills every step's `model`, `effort` and `budgetUsd`, and `maxFixLoops`, `gates`, `research` (`none` / `github` / `deep`), `planCritique` and `depth` (`standard` / `thorough`). Fields you state yourself win; a config without a tier works as before |
 | `milestone` | Milestone mode: plan, build and review only this ROADMAP milestone, checked against its ACs |
 | `gates` | Quality gates: `"minimal"`, `"standard"` (default for new configs), `"strict"`, an id list, or an object (see above) |
 | `testCmd` | Optional override of the Tests gate; a config without `gates` keeps gating on it alone |
@@ -328,6 +337,8 @@ The first time you start Claude Code after installing, a one-line hint tells you
 | **Let me pick** | Choose from the list; two competing frameworks (agent-skills / superpowers) are never installed together |
 | **Skip** | Nothing installed; `/toolkit` stays available |
 
+**Stack scan.** `/toolkit` also looks at your project (manifest files, `package.json` dependencies, or `SPEC.md` for a project with no code yet) and suggests plugins that fit the stack: `frontend-design` for web UIs, and the official language-server plugins for TypeScript, Python, Go and Rust. Suggest-only, with the same one-confirmation install; you can run the scan yourself with `node skills/toolkit/toolkit.mjs --detect <folder>`. The idea (scan the stack, suggest matching skills) is inspired by [autoskills](https://github.com/midudev/autoskills) by midudev; no code or registry from it is used here, since it is CC BY-NC 4.0 and this plugin is MIT.
+
 `/setup-pipeline` uses your choice and offers `/toolkit` once if you never made one. Nothing outside the catalog can be installed, every install needs one confirmation that lists the repos and licenses, and SSH GitHub URLs are rewritten to HTTPS for the install only, so machines without a GitHub SSH key work. Each plugin's token cost is measured (`claude plugin details`, or an A/B run where that undercounts), not guessed.
 
 | Plugin | What it does for you | Tokens per session | Notes |
@@ -345,10 +356,10 @@ The first time you start Claude Code after installing, a one-line hint tells you
 
 ## Caveats
 
-- **It spends real API money.** `budgetUsd` caps each step; see the token profiles above.
+- **It spends real API money.** `budgetUsd` caps each step; see the quality tiers above.
 - The Build step can run shell commands (except commit, push, reset and branch switching). Use it on repositories you trust.
 - Keep `pauseAfterPlan: true` for the first few runs so you read the plan before code is written.
-- Status (0.8.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. The plan check, the quality gates and the fail-fast loop have about 50 automated tests that need no model, plus real Haiku runs: a milestone with strict mypy, ruff, pytest and gitleaks passing every gate, and a run where a project-specific gate failed, went straight back to the builder without a review being paid for, was fixed in one 15-second step, and then passed (about $0.2 per run). Not yet tested end to end with Opus/Sonnet, on macOS/Linux, with the Go and Rust gate commands, or with pushing to a remote.
+- Status (0.9.0): end-to-end tested on Windows with Haiku on every step, including a two-milestone run with merges and two projects running at once on the dashboard. The plan check, the quality gates and the fail-fast loop have about 65 automated tests that need no model, plus real Haiku runs: a milestone with strict mypy, ruff, pytest and gitleaks passing every gate, and a run where a project-specific gate failed, went straight back to the builder without a review being paid for, was fixed in one 15-second step, and then passed (about $0.2 per run). Not yet tested end to end with Opus/Sonnet, on macOS/Linux, with the Go and Rust gate commands, or with pushing to a remote.
 
 ## Development
 
