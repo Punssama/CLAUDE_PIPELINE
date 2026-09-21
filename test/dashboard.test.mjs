@@ -175,3 +175,24 @@ test('the docs hook shows SPEC.md and ROADMAP.md in the dashboard and gives the 
     fs.rmSync(h, { recursive: true, force: true }); fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the docs hook also names the plugins that fit the stack the SPEC describes and are not installed', async () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-hook2-'));
+  const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-cfg-'));   // an empty Claude config: nothing installed
+  const dir = tmpProject({ 'SPEC.md': '## Stack\n| Payments | Stripe |\n| Backend | Supabase |\n', 'ROADMAP.md': '# Roadmap\n## [ ] M1 - x\n' });
+  const env = { ...process.env, CLAUDE_PIPELINE_HOME: h, CLAUDE_CONFIG_DIR: cfg };
+  const hook = (sid) => spawnSync(process.execPath, [SERVER, '--docs-hook'], { env, input: JSON.stringify({ session_id: sid, tool_input: { file_path: path.join(dir, 'ROADMAP.md') } }), encoding: 'utf8', timeout: 30000 });
+  try {
+    const out = JSON.parse(hook('a').stdout);
+    assert.match(out.systemMessage, /#project=/);
+    assert.match(out.systemMessage, /Plugins that fit and are not installed: .*stripe/s);
+    assert.match(out.systemMessage, /supabase/);
+    assert.match(out.hookSpecificOutput.additionalContext, /Then tell them/);
+    const second = JSON.parse(hook('b').stdout);                       // a new session: the link again, but the plugins were already named
+    assert.match(second.systemMessage, /#project=/);
+    assert.doesNotMatch(second.systemMessage, /Plugins that fit/);
+  } finally {
+    try { process.kill(JSON.parse(fs.readFileSync(path.join(h, 'dashboard.json'), 'utf8')).pid); } catch { /* not started */ }
+    for (const d of [h, cfg, dir]) fs.rmSync(d, { recursive: true, force: true });
+  }
+});

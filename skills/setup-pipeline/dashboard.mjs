@@ -22,6 +22,7 @@ export const HOME = process.env.CLAUDE_PIPELINE_HOME || path.join(os.homedir(), 
 export const RUNS = path.join(HOME, 'runs');
 const SESSIONS = path.join(HOME, 'sessions');
 const PROJECTS = path.join(HOME, 'projects');
+const ABANDONED = path.join(HOME, 'abandoned.json'); // folders the user gave up on: written by toolkit/clean.mjs
 const DOCS = { spec: 'SPEC.md', roadmap: 'ROADMAP.md' }; // the only project files the dashboard ever serves
 const INFO = path.join(HOME, 'dashboard.json');
 const LOCK = path.join(HOME, 'dashboard.lock');
@@ -51,9 +52,14 @@ export function projectId(cwd) {
 export function registerProject(cwd) {
   const dir = path.resolve(cwd), id = projectId(dir);
   fs.mkdirSync(PROJECTS, { recursive: true });
+  const gone = readJson(ABANDONED); // registering means the project is alive again
+  if (gone?.some((p) => projectId(p) === id)) fs.writeFileSync(ABANDONED, JSON.stringify(gone.filter((p) => projectId(p) !== id)));
   fs.writeFileSync(path.join(PROJECTS, `${id}.json`), JSON.stringify({ id, cwd: dir, name: path.basename(dir), at: new Date().toISOString() }));
   return id;
 }
+
+// Forget a registered project folder: its SPEC.md and ROADMAP.md leave the Documents list. The files themselves are never touched.
+export function unregisterProject(cwd) { fs.rmSync(path.join(PROJECTS, `${projectId(cwd)}.json`), { force: true }); }
 
 // Line diff between the plan the AI wrote (plan.orig.md) and the current plan.md; null when there is nothing to compare.
 export function planDiff(dir) {
@@ -137,7 +143,8 @@ function listProjects() {
   let files = []; try { files = fs.readdirSync(PROJECTS); } catch { /* none registered yet */ }
   for (const f of files) { const j = readJson(path.join(PROJECTS, f)); if (j?.cwd && j.id === projectId(j.cwd)) byId.set(j.id, j); }
   for (const r of listRuns()) if (!byId.has(projectId(r.cwd))) byId.set(projectId(r.cwd), { id: projectId(r.cwd), cwd: r.cwd, name: r.project });
-  return [...byId.values()].map((p) => ({ id: p.id, name: p.name, cwd: p.cwd, at: p.at, docs: Object.fromEntries(Object.entries(DOCS).map(([k, f]) => [k, fs.existsSync(path.join(p.cwd, f))])) }))
+  const gone = new Set((readJson(ABANDONED) || []).map(projectId));
+  return [...byId.values()].filter((p) => !gone.has(p.id)).map((p) => ({ id: p.id, name: p.name, cwd: p.cwd, at: p.at, docs: Object.fromEntries(Object.entries(DOCS).map(([k, f]) => [k, fs.existsSync(path.join(p.cwd, f))])) }))
     .filter((p) => Object.values(p.docs).some(Boolean));
 }
 
@@ -301,8 +308,10 @@ async function docsHook() {
   // ponytail: keeps the last 50 announcements; older ones simply get announced again
   fs.writeFileSync(file, JSON.stringify(Object.fromEntries([...Object.entries(seen), [key, url]].slice(-50))));
   const link = `${url}/#project=${id}`;
-  console.log(JSON.stringify({ systemMessage: `SPEC.md and ROADMAP.md are ready. Read them rendered (they update live): ${link}`,
-    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: `The pipeline dashboard now shows SPEC.md and ROADMAP.md and updates live: ${link}. Give the user this link in one line.` } }));
+  let plugins = ''; // the plugins that fit the stack this SPEC names and are not installed yet (once per project)
+  try { plugins = (await import('../toolkit/suggest.mjs')).suggestionNotice(dir) || ''; } catch { /* the notice is optional */ }
+  console.log(JSON.stringify({ systemMessage: `SPEC.md and ROADMAP.md are ready. Read them rendered (they update live): ${link}${plugins ? `\n${plugins}` : ''}`,
+    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: `The pipeline dashboard now shows SPEC.md and ROADMAP.md and updates live: ${link}. Give the user this link in one line.${plugins ? ` Then tell them in one or two lines: ${plugins}` : ''}` } }));
 }
 
 function readStdin() {

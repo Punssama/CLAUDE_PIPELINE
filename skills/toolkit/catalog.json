@@ -149,8 +149,8 @@
       ],
       "does": "Guidance for distinctive, polished UI design instead of templated defaults.",
       "forPipeline": "Add it to the Build step skills for UI work (the benchmark UI redesign used it).",
-      "alwaysOnTokens": null,
-      "measured": false,
+      "alwaysOnTokens": 59,
+      "measured": true,
       "headless": "on",
       "presets": []
     },
@@ -166,8 +166,8 @@
       ],
       "does": "Code intelligence for TypeScript / JavaScript (go-to-definition, diagnostics) through the typescript-language-server language server.",
       "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
-      "alwaysOnTokens": null,
-      "measured": false,
+      "alwaysOnTokens": 0,
+      "measured": true,
       "headless": "off",
       "presets": [],
       "notes": [
@@ -186,8 +186,8 @@
       ],
       "does": "Code intelligence for Python (go-to-definition, diagnostics) through the pyright language server.",
       "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
-      "alwaysOnTokens": null,
-      "measured": false,
+      "alwaysOnTokens": 0,
+      "measured": true,
       "headless": "off",
       "presets": [],
       "notes": [
@@ -206,8 +206,8 @@
       ],
       "does": "Code intelligence for Go (go-to-definition, diagnostics) through the gopls language server.",
       "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
-      "alwaysOnTokens": null,
-      "measured": false,
+      "alwaysOnTokens": 0,
+      "measured": true,
       "headless": "off",
       "presets": [],
       "notes": [
@@ -226,12 +226,532 @@
       ],
       "does": "Code intelligence for Rust (go-to-definition, diagnostics) through the rust-analyzer language server.",
       "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
-      "alwaysOnTokens": null,
-      "measured": false,
+      "alwaysOnTokens": 0,
+      "measured": true,
       "headless": "off",
       "presets": [],
       "notes": [
         "Needs rust-analyzer installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "vercel",
+      "plugin": "vercel-plugin@vercel",
+      "marketplace": "vercel/vercel-plugin",
+      "title": "vercel",
+      "kind": "stack",
+      "license": "see repository",
+      "stacks": [
+        "vercel"
+      ],
+      "does": "Vercel platform skills: deployments, env vars, CDN caching, AI SDK, feature flags.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 2838,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Large skill set (36 skills); the repository has a custom license: read it before installing."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "supabase",
+      "plugin": "supabase@supabase-agent-skills",
+      "marketplace": "supabase/agent-skills",
+      "title": "supabase",
+      "kind": "stack",
+      "license": "MIT",
+      "stacks": [
+        "supabase"
+      ],
+      "does": "Supabase guidance: database, auth, edge functions, realtime, storage and the client libraries.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 202,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "installScope": "project"
+    },
+    {
+      "id": "postgres-best-practices",
+      "plugin": "postgres-best-practices@supabase-agent-skills",
+      "marketplace": "supabase/agent-skills",
+      "title": "postgres-best-practices",
+      "kind": "stack",
+      "license": "MIT",
+      "stacks": [
+        "postgres"
+      ],
+      "does": "Postgres query, schema and performance best practices.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 223,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "stripe",
+      "plugin": "stripe@stripe",
+      "marketplace": "stripe/ai",
+      "title": "stripe",
+      "kind": "stack",
+      "license": "MIT",
+      "stacks": [
+        "stripe"
+      ],
+      "does": "Stripe skills: payments best practices, docs lookup, test cards, API upgrades.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 1674,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "installScope": "project"
+    },
+    {
+      "id": "cloudflare",
+      "plugin": "cloudflare@cloudflare",
+      "marketplace": "cloudflare/skills",
+      "title": "cloudflare",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "cloudflare"
+      ],
+      "does": "Cloudflare skills for Workers, Durable Objects, agents and deployment, plus the Cloudflare MCP server.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 665,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "clerk",
+      "plugin": "core@clerk-skills",
+      "marketplace": "clerk/skills",
+      "title": "clerk",
+      "kind": "stack",
+      "license": "not stated",
+      "stacks": [
+        "clerk"
+      ],
+      "does": "Clerk authentication: setup, custom UI, API references and CLI operations (the \"core\" plugin; the marketplace also has frameworks, features and mobile).",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 446,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "The repository states no license (or a custom one): read it before installing."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "better-auth",
+      "plugin": "auth-skills@better-auth-agent-skills",
+      "marketplace": "better-auth/skills",
+      "title": "better-auth",
+      "kind": "stack",
+      "license": "not stated",
+      "stacks": [
+        "better-auth"
+      ],
+      "does": "Better Auth: create and update the auth layer of a JavaScript or TypeScript project.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 165,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "The repository states no license (or a custom one): read it before installing."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "aws-deploy",
+      "plugin": "deploy-on-aws@agent-plugins-for-aws",
+      "marketplace": "awslabs/agent-plugins",
+      "title": "aws-deploy",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "aws"
+      ],
+      "does": "Deploy to AWS: architecture recommendations, cost estimates and infrastructure-as-code deployment.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 299,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers.",
+        "Adds a hook."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "aws-serverless",
+      "plugin": "aws-serverless@agent-plugins-for-aws",
+      "marketplace": "awslabs/agent-plugins",
+      "title": "aws-serverless",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "aws-serverless"
+      ],
+      "does": "Design, build, deploy and debug serverless applications on AWS.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 894,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Adds a hook."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "aws-amplify",
+      "plugin": "aws-amplify@agent-plugins-for-aws",
+      "marketplace": "awslabs/agent-plugins",
+      "title": "aws-amplify",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "aws-amplify"
+      ],
+      "does": "Build full-stack apps with AWS Amplify Gen 2: auth, data models, storage, Lambda functions.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 231,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "azure",
+      "plugin": "azure@skills",
+      "marketplace": "microsoft/skills",
+      "title": "azure",
+      "kind": "stack",
+      "license": "MIT",
+      "stacks": [
+        "azure"
+      ],
+      "does": "Microsoft Azure skills and MCP integration for resources, deployments and services.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 4140,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "The heaviest of the stack plugins (about 4K tokens per session).",
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "neon",
+      "plugin": "neon-postgres@neon",
+      "marketplace": "neondatabase/agent-skills",
+      "title": "neon",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "neon"
+      ],
+      "does": "Neon Postgres: branching, the Neon MCP server and agent skills.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 1446,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "sanity",
+      "plugin": "sanity@sanity-agent-toolkit",
+      "marketplace": "sanity-io/agent-toolkit",
+      "title": "sanity",
+      "kind": "stack",
+      "license": "MIT",
+      "stacks": [
+        "sanity"
+      ],
+      "does": "Sanity CMS: MCP server, agent skills and rules.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 1210,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "on",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "firebase",
+      "plugin": "firebase@firebase",
+      "marketplace": "firebase/agent-skills",
+      "title": "firebase",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "firebase"
+      ],
+      "does": "Firebase: projects, backend services, hosting and AI features.",
+      "forPipeline": "Its skills can go into the Build step for work that touches this stack (each step then carries its token cost).",
+      "alwaysOnTokens": 1274,
+      "measured": true,
+      "headless": "on",
+      "presets": [],
+      "installScope": "project"
+    },
+    {
+      "id": "terraform",
+      "plugin": "terraform@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "terraform",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "terraform"
+      ],
+      "does": "Terraform MCP server for infrastructure-as-code work.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "playwright",
+      "plugin": "playwright@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "playwright",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "e2e"
+      ],
+      "does": "Playwright browser automation and end-to-end testing, as an MCP server by Microsoft.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "laravel-boost",
+      "plugin": "laravel-boost@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "laravel-boost",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "laravel"
+      ],
+      "does": "Laravel toolkit as an MCP server: Artisan, docs and database help.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "detailsUndercounts": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Includes an MCP server; its tool schemas load with it and are not in the token number. The pipeline steps skip MCP servers."
+      ],
+      "installScope": "project"
+    },
+    {
+      "id": "jdtls-lsp",
+      "plugin": "jdtls-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "jdtls-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "java"
+      ],
+      "does": "Code intelligence for Java (go-to-definition, diagnostics) through Eclipse JDT.LS.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs Eclipse JDT.LS installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "kotlin-lsp",
+      "plugin": "kotlin-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "kotlin-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "kotlin"
+      ],
+      "does": "Code intelligence for Kotlin (go-to-definition, diagnostics) through the Kotlin language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs the Kotlin language server installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "csharp-lsp",
+      "plugin": "csharp-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "csharp-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "csharp"
+      ],
+      "does": "Code intelligence for C# (go-to-definition, diagnostics) through a C# language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs a C# language server installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "php-lsp",
+      "plugin": "php-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "php-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "php"
+      ],
+      "does": "Code intelligence for PHP (go-to-definition, diagnostics) through Intelephense.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs Intelephense installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "ruby-lsp",
+      "plugin": "ruby-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "ruby-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "ruby"
+      ],
+      "does": "Code intelligence for Ruby (go-to-definition, diagnostics) through ruby-lsp.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs ruby-lsp installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "swift-lsp",
+      "plugin": "swift-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "swift-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "swift"
+      ],
+      "does": "Code intelligence for Swift (go-to-definition, diagnostics) through SourceKit-LSP.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs SourceKit-LSP installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "clangd-lsp",
+      "plugin": "clangd-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "clangd-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "cpp"
+      ],
+      "does": "Code intelligence for C and C++ (go-to-definition, diagnostics) through clangd.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs clangd installed on this machine; the plugin only connects to it."
+      ]
+    },
+    {
+      "id": "lua-lsp",
+      "plugin": "lua-lsp@claude-plugins-official",
+      "marketplace": "anthropics/claude-plugins-official",
+      "title": "lua-lsp",
+      "kind": "stack",
+      "license": "Apache-2.0",
+      "stacks": [
+        "lua"
+      ],
+      "does": "Code intelligence for Lua (go-to-definition, diagnostics) through a Lua language server.",
+      "forPipeline": "Interactive sessions only: the pipeline steps do not load it.",
+      "alwaysOnTokens": 0,
+      "measured": true,
+      "headless": "off",
+      "presets": [],
+      "notes": [
+        "Needs a Lua language server installed on this machine; the plugin only connects to it."
       ]
     }
   ]

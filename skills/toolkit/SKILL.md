@@ -22,7 +22,7 @@ One line per plugin: name, what it does *for them* (`does`), `+N tokens/session`
 - superpowers and agent-skills are alternatives (two routers on one task conflict): Full and Recommended use agent-skills.
 
 ## 2b. Scan the project for stack-specific plugins
-Run `node "${CLAUDE_SKILL_DIR}/toolkit.mjs" --detect "<project root>"` (a folder with no code yet is read from its `SPEC.md`). It returns `stacks` (each with `why`, the first signal that matched) and `suggestions`: catalog plugins whose `stacks` fit, with `installed`, `license`, `notes` and `unmet`. Drop the installed and `unmet` ones. If any are left, list them in one line each ("<title>: <does> (because <why>)"), then ONE multiSelect `AskUserQuestion` (**Add these?**, header `Stack`), none pre-selected. Add the chosen ids to the choice below and go through steps 4-6 with them. Nothing found or nothing new: say nothing. Suggest-only: this scan never installs on its own.
+Run `node "${CLAUDE_SKILL_DIR}/toolkit.mjs" --detect "<project root>"` (a folder with no code yet is read from its `SPEC.md`). It returns `stacks` (each with `why`, the first signal that matched) and `suggestions`, most useful first (services and platforms before language servers, cheaper first): catalog plugins whose `stacks` fit, with `installed`, `license`, `notes`, `unmet` and `tokens` (per session; a lower bound when `tokensAreLowerBound`, because MCP tool schemas are not counted). Drop the installed and `unmet` ones. If any are left, list them in one line each ("<title>: <does>, about <tokens> tokens per session (because <why>)"), adding any `notes` that matter (no license stated, includes an MCP server). Then ONE multiSelect `AskUserQuestion` (**Add these?**, header `Stack`), none pre-selected; it takes at most 4 options, so offer the first four and name the rest in your message. A plugin hook already tells the user about these once per project when a session starts in it, so they may come here with a name in mind. Add the chosen ids to the choice below and go through steps 4-6 with them. Nothing found or nothing new: say nothing. Suggest-only: this scan never installs on its own.
 
 ## 3. Let them choose
 If `$ARGUMENTS` is `recommended`, `full` or `skip`, take it without asking. Otherwise ONE `AskUserQuestion`:
@@ -38,12 +38,13 @@ Someone who says they want low cost or few tokens gets Recommended, not Full.
 - Take the ids from `presets.<name>.ids` for a preset. Drop anything already installed and anything with `unmet` (say what was left out and why). Nothing left to install → say so, record the choice (step 6), stop.
 
 ## 4. Confirm once
-List exactly what will be installed: id, source repo (`marketplace` in the catalog: github.com/<repo>), license. Show each chosen plugin's `notes` that matter (for context-mode and agentmemory: requirements, license and side effects; context-mode edits `~/.claude/settings.json` on its first start). State: these are third-party plugins from those repos; they run hooks or servers with the user's own permissions; nothing outside the list is installed. Then `AskUserQuestion`: **Install** / **Change the selection** / **Cancel**.
+List exactly what will be installed: id, source repo (`marketplace` in the catalog: github.com/<repo>), license. Say where each one goes: `--detect` gives `scope` ("this project only" or "all projects"). Show each chosen plugin's `notes` that matter (for context-mode and agentmemory: requirements, license and side effects; context-mode edits `~/.claude/settings.json` on its first start). State: these are third-party plugins from those repos; they run hooks or servers with the user's own permissions; nothing outside the list is installed. Then `AskUserQuestion`: **Install** / **Change the selection** / **Cancel**.
 
 ## 5. Install
 ```bash
-node "${CLAUDE_SKILL_DIR}/toolkit.mjs" --install id1,id2
+node "${CLAUDE_SKILL_DIR}/toolkit.mjs" --install id1,id2 --project "<project root>"
 ```
+Pass `--project` whenever the plugins come from the project scan (2b): service and platform plugins (Stripe, Supabase, Cloudflare ...) are then installed **for that project only** (Claude Code's `local` scope, kept out of git), so they add no tokens to your other projects and `/clean` can remove them exactly when the project is abandoned. Language servers, `frontend-design` and the companion plugins (ponytail ...) are installed for all projects either way. Each result says which (`scope`). Without a project (the Recommended, Full or pick sets), leave `--project` out.
 Allow up to 5 minutes (roughly 10-60 seconds per plugin); run it in the foreground. It prints one JSON array: `ok`, `verified`, `message`, `setup` per plugin. Report each as installed or failed (with the message; typical causes are no network or a blocked GitHub). It rewrites SSH GitHub URLs to HTTPS for its own child processes only; it never edits git or SSH configuration.
 
 ## 6. Record and follow up
