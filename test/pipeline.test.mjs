@@ -298,6 +298,20 @@ test('the reviewer may only write review.md, by a rule anchored at the project r
   assert.doesNotMatch(argOf(r.calls[2], '--allowedTools'), /Edit\(\.pipeline/);
 });
 
+test('antigravity provider uses Gemini 3.x models from tiers.antigravity.json', () => {
+  const r = pipeline({
+    cfg: tierCfg('premium', { provider: 'antigravity', gates: 'minimal' }),
+    scenario: { plan: [{ writes: okPlan }], critique: [{}], build: [{ writes: GOOD }], review: [{ writes: PASS }] }
+  }).go();
+  assert.equal(r.code, 0, r.out);
+  const [pl, cr, bu, re, co] = r.calls;
+  assert.deepEqual([argOf(pl, '--model'), argOf(pl, '--effort')], ['gemini-3.8-flash', 'max']);
+  assert.deepEqual([argOf(cr, '--model'), argOf(cr, '--effort')], ['gemini-3.1-pro', 'max']);
+  assert.deepEqual([argOf(bu, '--model'), argOf(bu, '--effort')], ['gemini-3.1-pro', 'max']);
+  assert.deepEqual([argOf(re, '--model'), argOf(re, '--effort')], ['gemini-3.1-pro', 'max']);
+  assert.deepEqual([argOf(co, '--model'), argOf(co, '--effort')], ['gemini-3.7-flash', 'high']);
+});
+
 test('a reviewer that could not write review.md but states a verdict in its final message is not a failed run', () => {
   const r = pipeline({ scenario: { plan: [{ writes: okPlan }], build: [{ writes: GOOD }], review: [{ result: '**Verdict: PASS.**\nI could not write the file. Critical: none.' }] } }).go();
   assert.equal(r.code, 0, r.out);

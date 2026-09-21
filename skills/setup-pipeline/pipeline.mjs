@@ -59,9 +59,18 @@ const [cfgPath, ...rest] = process.argv.slice(2);
 const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
 // A tier supplies the defaults; anything the config states itself wins, so configs without a tier behave exactly as before.
 if (cfg.tier) {
-  const t = JSON.parse(fs.readFileSync(path.join(HERE, 'tiers.json'), 'utf8')).tiers[cfg.tier];
+  const isAntigravity = Boolean(
+    process.env.ANTIGRAVITY_PIPELINE_CLI ||
+    cfg.provider === 'antigravity' ||
+    cfg.provider === 'gemini' ||
+    cfg.runner === 'antigravity'
+  );
+  const tierFile = isAntigravity && fs.existsSync(path.join(HERE, 'tiers.antigravity.json'))
+    ? 'tiers.antigravity.json'
+    : 'tiers.json';
+  const t = JSON.parse(fs.readFileSync(path.join(HERE, tierFile), 'utf8')).tiers[cfg.tier];
   if (!t) { console.log(`[pipeline] unknown tier "${cfg.tier}" (expected economy, balanced or premium)`); process.exit(1); }
-  for (const k of ['research', 'planCritique', 'depth', 'gates', 'maxFixLoops']) cfg[k] ??= t[k];
+  for (const k of ['research', 'planCritique', 'depth', 'gates', 'maxFixLoops', 'critique']) cfg[k] ??= t[k];
   cfg.steps = Object.fromEntries(Object.entries(t.steps).map(([k, v]) => [k, { ...v, ...cfg.steps?.[k] }]));
 }
 const fi = rest.indexOf('--from');
@@ -222,8 +231,9 @@ function calculateCost(model, usage, reportedCost = 0) {
   return 0;
 }
 
-async function run(step, prompt, tools, allowed, disallowed = '') {
-  const s = cfg.steps[step], st = status.steps[step];
+async function run(step, prompt, tools, allowed, disallowed = '', stepOverride = null) {
+  const s = stepOverride ? { ...cfg.steps[step], ...stepOverride } : cfg.steps[step];
+  const st = status.steps[step];
   const skills = (s.skills?.length ? `\n\nUse these skills where they apply (invoke each with the Skill tool): ${s.skills.join(', ')}.` : '')
     + (cfg.guidance ? `\n\nGuidance: ${cfg.guidance}` : '');
   const args = ['-p', '--model', s.model, '--tools', sh(tools), '--allowedTools', sh(allowed),
@@ -385,7 +395,7 @@ You are non-interactive: do not ask questions, record assumptions instead. Keep 
   let lint = await repairIfNeeded();
   if (cfg.planCritique) { // premium: a second, skeptical pass over the plan before anything is built
     say('plan critique: a second pass looks for logic gaps');
-    await run('plan', critiquePrompt(), ...planTools);
+    await run('plan', critiquePrompt(), planTools[0], planTools[1], '', cfg.critique || cfg.steps?.critique);
     lint = await repairIfNeeded();
   }
   status.planLint = { errors: lint.errors.length, warnings: lint.warnings.length };

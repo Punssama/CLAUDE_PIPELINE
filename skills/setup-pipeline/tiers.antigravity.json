@@ -1,0 +1,106 @@
+{
+  "about": "Quality tiers for Gemini and Antigravity, chosen before the plan. The runner fills any field the config leaves out from the tier (models, effort, budgetUsd per step, maxFixLoops, gates, research, planCritique, depth); a field the config states itself wins. maxSkills is read by /setup-pipeline (skills per step), not by the runner. effort: low | medium | high | xhigh | max. research: none | github (up to 3 popular repos) | deep (up to 5, compares architectures and licenses). depth: standard | thorough (extra edge-case tests when building, mutation-style questions when reviewing).",
+  "tiers": {
+    "economy": {
+      "label": "Economy",
+      "about": "Plan written from spec alone, fast Gemini 3.8 Flash model with medium effort across all stages, token-saving plugins, minimal suggestions. Cheapest.",
+      "research": "none",
+      "planCritique": false,
+      "depth": "standard",
+      "gates": "standard",
+      "maxFixLoops": 1,
+      "maxSkills": 1,
+      "steps": {
+        "plan": {
+          "model": "gemini-3.8-flash",
+          "effort": "medium",
+          "budgetUsd": 0.2
+        },
+        "build": {
+          "model": "gemini-3.8-flash",
+          "effort": "medium",
+          "budgetUsd": 0.5
+        },
+        "review": {
+          "model": "gemini-3.8-flash",
+          "effort": "medium",
+          "budgetUsd": 0.2
+        },
+        "commit": {
+          "model": "gemini-3.8-flash",
+          "effort": "medium",
+          "budgetUsd": 0.1
+        }
+      }
+    },
+    "balanced": {
+      "label": "Balanced",
+      "about": "Balanced plan and code with Gemini 3.1 Pro at high effort across all stages, GitHub research, standard quality gates.",
+      "research": "github",
+      "planCritique": false,
+      "depth": "standard",
+      "gates": "standard",
+      "maxFixLoops": 2,
+      "maxSkills": 2,
+      "steps": {
+        "plan": {
+          "model": "gemini-3.1-pro",
+          "effort": "high",
+          "budgetUsd": 1.0
+        },
+        "build": {
+          "model": "gemini-3.1-pro",
+          "effort": "high",
+          "budgetUsd": 2.5
+        },
+        "review": {
+          "model": "gemini-3.1-pro",
+          "effort": "high",
+          "budgetUsd": 1.0
+        },
+        "commit": {
+          "model": "gemini-3.1-pro",
+          "effort": "high",
+          "budgetUsd": 0.3
+        }
+      }
+    },
+    "premium": {
+      "label": "Premium",
+      "about": "Deep research, plan with Gemini 3.8 Flash (max effort), critique, build, test & review with Gemini 3.1 Pro (max effort), commit with Gemini 3.7 Flash (high effort).",
+      "research": "deep",
+      "planCritique": true,
+      "critique": {
+        "model": "gemini-3.1-pro",
+        "effort": "max",
+        "budgetUsd": 1.0
+      },
+      "depth": "thorough",
+      "gates": "strict",
+      "maxFixLoops": 3,
+      "maxSkills": 3,
+      "steps": {
+        "plan": {
+          "model": "gemini-3.8-flash",
+          "effort": "max",
+          "budgetUsd": 0.8
+        },
+        "build": {
+          "model": "gemini-3.1-pro",
+          "effort": "max",
+          "budgetUsd": 4.0
+        },
+        "review": {
+          "model": "gemini-3.1-pro",
+          "effort": "max",
+          "budgetUsd": 1.5
+        },
+        "commit": {
+          "model": "gemini-3.7-flash",
+          "effort": "high",
+          "budgetUsd": 0.2
+        }
+      }
+    }
+  }
+}

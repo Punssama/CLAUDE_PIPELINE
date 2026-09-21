@@ -19,7 +19,7 @@ Takes you from a rough, vague idea to tested, reviewed, production-ready code in
 ## ⚡ Highlights
 
 - **Dual Ecosystem Support**: Native plugin for **Claude Code** (`ai-pipeline` / `claude-pipeline`) and native deterministic workflows for **Antigravity** (`workflows/pipeline.workflow.js`).
-- **Multi-Model Orchestration**: Flexible execution across Gemini 2.5 Pro / Flash and Claude Opus 5 / Sonnet 5 / Haiku 4.5.
+- **Multi-Model Orchestration**: Flexible execution across Gemini 3.1 Pro / 3.8 Flash / 3.7 Flash and Claude Opus 5 / Sonnet 5 / Haiku 4.5.
 - **Zero-Token Automated Quality Gates**: Local offline checks (`tests`, `lint`, `types`, `secrets`, `trace`, `size`) intercept build errors immediately on your machine — preventing wasted reviewer model costs.
 - **Tiered Quality & Budgets**: Select `economy`, `balanced`, or `premium` to configure model selection, reasoning effort (`low` to `max`), web research depth, and plan critique passes.
 - **Live Local Web Dashboard**: Machine-wide real-time dashboard on port `3120` displaying live tool execution streams, `SPEC.md` / `ROADMAP.md` previews, plan diffs, and interactive approvals.
@@ -106,13 +106,23 @@ Pipeline phases:
 
 ## 🎯 Quality Tiers
 
-Configure execution depth in `.pipeline/config.json` via the `"tier"` parameter:
+Configure execution depth in `.pipeline/config.json` via the `"tier"` parameter.
 
-| Tier | Planner | Builder | Reviewer | Committer | Research | Plan Critique | Quality Gates | Target Use Case |
-|---|---|---|---|---|---|---|---|---|
-| **economy** | Gemini Flash / Sonnet 5 | Gemini Flash / Sonnet 5 | Gemini Pro / Haiku 4.5 | Gemini Flash / Haiku 4.5 | None (spec only) | No | Standard | Rapid prototyping, tight budgets, simple scripts |
-| **balanced** | Gemini Pro / Opus 5 | Gemini Pro / Sonnet 5 | Gemini Pro / Sonnet 5 | Gemini Flash / Haiku 4.5 | GitHub (up to 3 repos) | No | Standard | Production features, balanced cost and thoroughness |
-| **premium** | Gemini Pro / Opus 5 (`max`) | Gemini Pro / Sonnet 5 (`max`) | Gemini Pro / Opus 5 (`max`) | Gemini Flash / Haiku 4.5 | Deep (up to 5 repos, arch comparison) | Yes (Staff Engineer pass) | Strict + Mutation Check | Mission-critical code, security-sensitive systems, complex architectures |
+### Antigravity (Gemini)
+
+| Tier | Planner | Plan Critique | Builder & Test | Reviewer (Read-Only) | Committer | Target Use Case |
+|---|---|---|---|---|---|---|
+| **economy** | `gemini-3.8-flash` (`medium`) | None | `gemini-3.8-flash` (`medium`) | `gemini-3.8-flash` (`medium`) | `gemini-3.8-flash` (`medium`) | Rapid prototyping, tight budgets, simple scripts |
+| **balanced** | `gemini-3.1-pro` (`high`) | None | `gemini-3.1-pro` (`high`) | `gemini-3.1-pro` (`high`) | `gemini-3.1-pro` (`high`) | Production features, balanced cost and deep reasoning |
+| **premium** | `gemini-3.8-flash` (`max`) | `gemini-3.1-pro` (`max`) | `gemini-3.1-pro` (`max`) | `gemini-3.1-pro` (`max`) | `gemini-3.7-flash` (`high`) | Mission-critical code, security-sensitive systems, complex architectures |
+
+### Claude Code
+
+| Tier | Planner | Builder | Reviewer | Committer | Research | Plan Critique | Quality Gates |
+|---|---|---|---|---|---|---|---|
+| **economy** | Sonnet 5 | Sonnet 5 | Haiku 4.5 | Haiku 4.5 | None (spec only) | No | Standard |
+| **balanced** | Opus 5 | Sonnet 5 | Sonnet 5 | Haiku 4.5 | GitHub (up to 3 repos) | No | Standard |
+| **premium** | Opus 5 (`max`) | Sonnet 5 (`max`) | Opus 5 (`max`) | Haiku 4.5 | Deep (up to 5 repos, arch comparison) | Yes (Staff Engineer pass) | Strict + Mutation Check |
 
 Explicit overrides in `.pipeline/config.json` always take precedence over tier defaults.
 
@@ -182,10 +192,10 @@ Safely de-provision project-specific plugins when archiving or finishing a proje
   "guidance": "Concise code, strict typing.",
   "disablePlugins": [],
   "steps": {
-    "plan":   { "model": "gemini-2.5-pro",   "budgetUsd": 1.5, "skills": [] },
-    "build":  { "model": "gemini-2.5-pro",   "budgetUsd": 3.0, "skills": [] },
-    "review": { "model": "gemini-2.5-pro",   "budgetUsd": 1.5, "skills": [] },
-    "commit": { "model": "gemini-2.5-flash", "budgetUsd": 0.2, "skills": [] }
+    "plan":   { "model": "gemini-3.1-pro",   "budgetUsd": 1.5, "skills": [] },
+    "build":  { "model": "gemini-3.1-pro",   "budgetUsd": 3.0, "skills": [] },
+    "review": { "model": "gemini-3.1-pro",   "budgetUsd": 1.5, "skills": [] },
+    "commit": { "model": "gemini-3.7-flash", "budgetUsd": 0.2, "skills": [] }
   }
 }
 ```

@@ -11,11 +11,42 @@ export const meta = {
 };
 
 /**
+ * Model and reasoning effort mapping per tier for Antigravity & Gemini:
+ * - economy: Gemini 3.8 Flash with medium effort across all stages.
+ * - balanced: Gemini 3.1 Pro with high effort across all stages.
+ * - premium: Plan with Gemini 3.8 Flash (max effort), Build & Review with Gemini 3.1 Pro (max effort), Commit with Gemini 3.7 Flash.
+ */
+const TIER_CONFIG = {
+  economy: {
+    plan: { model: 'gemini-3.8-flash', effort: 'medium' },
+    critique: null,
+    build: { model: 'gemini-3.8-flash', effort: 'medium' },
+    review: { model: 'gemini-3.8-flash', effort: 'medium' },
+    commit: { model: 'gemini-3.8-flash', effort: 'medium' }
+  },
+  balanced: {
+    plan: { model: 'gemini-3.1-pro', effort: 'high' },
+    critique: null,
+    build: { model: 'gemini-3.1-pro', effort: 'high' },
+    review: { model: 'gemini-3.1-pro', effort: 'high' },
+    commit: { model: 'gemini-3.1-pro', effort: 'high' }
+  },
+  premium: {
+    plan: { model: 'gemini-3.8-flash', effort: 'max' },
+    critique: { model: 'gemini-3.1-pro', effort: 'max' },
+    build: { model: 'gemini-3.1-pro', effort: 'max' },
+    review: { model: 'gemini-3.1-pro', effort: 'max' },
+    commit: { model: 'gemini-3.7-flash', effort: 'high' }
+  }
+};
+
+/**
  * Antigravity Native Pipeline Workflow
- * Orchestrates multi-agent execution across Gemini Pro, Gemini Flash, and Claude models.
+ * Orchestrates multi-agent execution across Gemini 3.1 Pro, Gemini 3.8 Flash, and Gemini 3.7 Flash.
  */
 export default async function runPipeline(args = {}) {
   const { milestone, tier = 'balanced', task, gates = 'standard' } = args;
+  const cfg = TIER_CONFIG[tier] || TIER_CONFIG.balanced;
 
   // Phase 1: Plan
   const planResult = await phase('Plan', async () => {
@@ -30,24 +61,26 @@ Explore the codebase, verify dependencies, and generate a complete .pipeline/pla
 4. Test matrix
 5. Verified test command`,
       {
-        label: 'planner:gemini-pro',
+        label: `planner:${cfg.plan.model}`,
         phase: 'Plan',
-        model: tier === 'economy' ? 'gemini-2.5-flash' : 'gemini-2.5-pro'
+        model: cfg.plan.model,
+        effort: cfg.plan.effort
       }
     );
   });
 
   // Optional Phase 2: Plan Critique (Premium tier)
-  if (tier === 'premium') {
+  if (tier === 'premium' && cfg.critique) {
     await phase('Critique', async () => {
       return await agent(
         `Critique the plan in .pipeline/plan.md with the skepticism of a Principal Staff Engineer.
 Verify edge cases, security implications, data consistency, and architectural trade-offs.
 Update .pipeline/plan.md with fixes.`,
         {
-          label: 'critique:gemini-pro',
+          label: `critique:${cfg.critique.model}`,
           phase: 'Critique',
-          model: 'gemini-2.5-pro'
+          model: cfg.critique.model,
+          effort: cfg.critique.effort
         }
       );
     });
@@ -61,9 +94,10 @@ Follow .pipeline/plan.md strictly. Write tests first.
 Ensure every acceptance criterion has explicit test coverage.
 Run test, lint, type-check, and build commands before completing.`,
       {
-        label: 'builder:gemini-pro',
+        label: `builder:${cfg.build.model}`,
         phase: 'Build',
-        model: tier === 'economy' ? 'gemini-2.5-flash' : 'gemini-2.5-pro'
+        model: cfg.build.model,
+        effort: cfg.build.effort
       }
     );
   });
@@ -75,9 +109,10 @@ Run test, lint, type-check, and build commands before completing.`,
 Check proof of ACs, correctness, edge cases, resource leaks, and test quality.
 Write findings to .pipeline/review.md ending with VERDICT: PASS or VERDICT: FAIL.`,
       {
-        label: 'reviewer:gemini-pro',
+        label: `reviewer:${cfg.review.model}`,
         phase: 'Review',
-        model: tier === 'economy' ? 'gemini-2.5-flash' : 'gemini-2.5-pro'
+        model: cfg.review.model,
+        effort: cfg.review.effort
       }
     );
   });
@@ -89,9 +124,10 @@ Write findings to .pipeline/review.md ending with VERDICT: PASS or VERDICT: FAIL
         `Commit the verified changes for milestone ${milestone || 'M1'}.
 Create a clean, descriptive git commit message summarizing the milestone and verified ACs.`,
         {
-          label: 'committer:gemini-flash',
+          label: `committer:${cfg.commit.model}`,
           phase: 'Commit',
-          model: 'gemini-2.5-flash'
+          model: cfg.commit.model,
+          effort: cfg.commit.effort
         }
       );
     });
