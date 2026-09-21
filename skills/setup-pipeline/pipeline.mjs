@@ -168,9 +168,13 @@ function brief(name, input = {}) {
 }
 
 // Headless steps are marked, so plugin hooks meant for people (like the one-time /toolkit hint) stay silent inside them.
-const STEP_ENV = { ...process.env, CLAUDE_PIPELINE_HEADLESS: '1' };
-const CLAUDE = process.env.CLAUDE_PIPELINE_CLAUDE ? JSON.parse(process.env.CLAUDE_PIPELINE_CLAUDE) : ['claude'];
-// Runs claude headless with stream-json so every tool call reaches the dashboard as it happens.
+const STEP_ENV = { ...process.env, CLAUDE_PIPELINE_HEADLESS: '1', ANTIGRAVITY_PIPELINE_HEADLESS: '1' };
+const CLAUDE = process.env.ANTIGRAVITY_PIPELINE_CLI
+  ? JSON.parse(process.env.ANTIGRAVITY_PIPELINE_CLI)
+  : process.env.CLAUDE_PIPELINE_CLAUDE
+    ? JSON.parse(process.env.CLAUDE_PIPELINE_CLAUDE)
+    : ['claude'];
+// Runs agent runner headless with stream-json so every tool call reaches the dashboard as it happens.
 // Native installer gives claude(.exe); npm on Windows gives claude.cmd, which needs a shell.
 function claude(step, args, input) {
   return new Promise((resolve) => {
@@ -193,14 +197,29 @@ function claude(step, args, input) {
       });
       child.stderr.on('data', (d) => { err += d; });
       child.on('error', (e) => {
-        if (e.code === 'ENOENT' && WIN && cmd === 'claude') return start('claude.cmd', a.map((x) => `"${x}"`), { shell: true });
-        die(`cannot run claude: ${e.message}. Is Claude Code installed and on PATH?`);
+        if (e.code === 'ENOENT' && WIN && (cmd === 'claude' || cmd === 'antigravity')) return start(cmd + '.cmd', a.map((x) => `"${x}"`), { shell: true });
+        die(`cannot run agent runner (${cmd}): ${e.message}. Is the CLI installed and on PATH?`);
       });
       child.on('close', (code) => resolve({ status: code, stdout: raw, stderr: err, result }));
       child.stdin.end(input);
     };
     start(CLAUDE[0], [...CLAUDE.slice(1), ...args], {});
   });
+}
+
+function calculateCost(model, usage, reportedCost = 0) {
+  if (reportedCost > 0) return reportedCost;
+  if (!usage) return 0;
+  const inp = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+  const out = usage.output_tokens || 0;
+  const cacheRead = usage.cache_read_input_tokens || 0;
+  const m = String(model || '').toLowerCase();
+  if (m.includes('pro')) return (inp * 1.25 + out * 5.00 + cacheRead * 0.3125) / 1_000_000;
+  if (m.includes('flash')) return (inp * 0.075 + out * 0.30 + cacheRead * 0.01875) / 1_000_000;
+  if (m.includes('opus')) return (inp * 15 + out * 75 + cacheRead * 1.5) / 1_000_000;
+  if (m.includes('sonnet')) return (inp * 3 + out * 15 + cacheRead * 0.3) / 1_000_000;
+  if (m.includes('haiku')) return (inp * 0.8 + out * 4 + cacheRead * 0.08) / 1_000_000;
+  return 0;
 }
 
 async function run(step, prompt, tools, allowed, disallowed = '') {
@@ -222,7 +241,7 @@ async function run(step, prompt, tools, allowed, disallowed = '') {
   say(`${step}: ${s.model} ...`);
   const t0 = Date.now();
   const r = await claude(step, args, prompt + skills);
-  const cost = r.result?.total_cost_usd || 0;
+  const cost = r.result?.total_cost_usd || calculateCost(s.model, r.result?.usage, r.result?.total_cost_usd);
   st.costUsd += cost; status.totalCostUsd += cost; st.endedAt = new Date().toISOString(); st.seconds = (st.seconds || 0) + Math.round((Date.now() - t0) / 1000);
   fs.mkdirSync(`${D}/logs`, { recursive: true });
   fs.writeFileSync(`${D}/logs/${step}-${Date.now()}.log`, (r.result?.result || '') + '\n--- stream ---\n' + r.stdout + '\n--- stderr ---\n' + r.stderr);

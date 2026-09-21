@@ -1,0 +1,21 @@
+{
+  "name": "ai-pipeline",
+  "version": "0.12.0",
+  "description": "Unified multi-model coding pipeline for Claude Code & Google DeepMind Antigravity: from a vague idea to reviewed code in any local folder (git optional)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "author": "Punssama",
+  "license": "MIT",
+  "keywords": [
+    "antigravity",
+    "gemini",
+    "gemini-pro",
+    "claude",
+    "pipeline",
+    "automation",
+    "multi-model",
+    "quality-gates"
+  ]
+}

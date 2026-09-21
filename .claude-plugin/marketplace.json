@@ -1,13 +1,18 @@
 {
   "name": "punssama",
-  "description": "Punssama's Claude Code plugins.",
+  "description": "Punssama's AI agent plugins.",
   "owner": {
     "name": "Punssama"
   },
   "plugins": [
     {
+      "name": "ai-pipeline",
+      "description": "Idea -> spec -> milestones built by an automated Plan/Build/Review/Commit pipeline with quality gates for Claude Code & Antigravity. Commands: /discover, /setup-pipeline, /toolkit, /clean.",
+      "source": "./"
+    },
+    {
       "name": "claude-pipeline",
-      "description": "Idea -> spec -> milestones built by an automated Plan/Build/Review/Commit pipeline with a plan check and quality gates. Commands: /discover, /setup-pipeline, /toolkit.",
+      "description": "Idea -> spec -> milestones built by an automated Plan/Build/Review/Commit pipeline with quality gates for Claude Code & Antigravity (alias of ai-pipeline).",
       "source": "./"
     }
   ]
