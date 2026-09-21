@@ -127,6 +127,7 @@ td.detail { white-space: normal; overflow-wrap: anywhere; min-width: 220px; max-
 .tools { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--muted); }
 .tools select { font: inherit; font-size: 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
 .tools label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.tabs .path { margin-left: auto; padding-right: 8px; color: var(--muted); font-size: 12px; }
 .pane { height: 420px; overflow: auto; overscroll-behavior: contain; }
 pre.file { margin: 0; padding: 12px 14px; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
 /* rendered markdown (plan.md, review.md) */
@@ -338,11 +339,14 @@ const when = (iso) => {
     : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
-let runs = [], filter = 'all';
-let selected = (location.hash.match(/run=([\w.-]+)/) || [])[1] || null;
+let runs = [], projects = [], filter = 'all';
+const hashOf = (re) => (location.hash.match(re) || [])[1];
+// selected is a run id, or 'p:<id>' for a project's SPEC.md / ROADMAP.md (link: #project=<id>)
+let selected = hashOf(/run=([\w.-]+)/) || (hashOf(/project=(\w+)/) ? 'p:' + hashOf(/project=(\w+)/) : null);
+let projTab = selected?.startsWith('p:') && hashOf(/doc=(spec|roadmap)/) || 'spec', projShown = ''; // #project=<id>&doc=roadmap opens that document
 let listSig = '', summarySig = '', shellFor = null, nextEvent = 0, follow = true, tab = 'activity';
 const hashParams = new URLSearchParams(location.hash.slice(1));
-let pendingDoc = hashParams.get('doc') ? { file: hashParams.get('doc'), mode: hashParams.get('mode') || 'read' } : null;
+let pendingDoc = hashParams.get('doc') && !selected?.startsWith('p:') ? { file: hashParams.get('doc'), mode: hashParams.get('mode') || 'read' } : null;
 
 const live = (r) => r.state === 'running';
 const elapsedOf = (r) => live(r) ? null : r.state === 'stopped' ? undefined : Math.round((Date.parse(r.updatedAt) - Date.parse(r.startedAt)) / 1000);
@@ -389,14 +393,16 @@ function gatesPanel(r) {
 // ---- sidebar ---------------------------------------------------------------
 function renderList() {
   const shown = runs.filter((r) => filter === 'all' || (filter === 'running' ? live(r) : ['failed', 'stopped'].includes(r.state)));
-  const sig = JSON.stringify([filter, selected, shown]);
+  const sig = JSON.stringify([filter, selected, shown, projects]);
   if (sig === listSig) return;
   listSig = sig;
   const el = $('list'), top = el.scrollTop;
-  if (!shown.length) { el.innerHTML = `<div class="empty">${runs.length ? 'No runs match this filter.' : 'No runs yet.'}</div>`; return; }
+  const docs = projects.length ? '<div class="proj"><span>Documents</span></div>' + projects.map((p) => `<button class="run" data-project="${esc(p.id)}" aria-current="${'p:' + p.id === selected}">
+    <div class="top"><span class="name">${esc(p.name)}</span><span class="state s-done">${Object.keys(p.docs).filter((k) => p.docs[k]).map((k) => k.toUpperCase()).join(' · ')}</span></div></button>`).join('') : '';
+  if (!shown.length) { el.innerHTML = docs + `<div class="empty">${runs.length ? 'No runs match this filter.' : 'No runs yet.'}</div>`; return; }
   const byProject = {};
   for (const r of shown) (byProject[r.cwd] ||= []).push(r);
-  el.innerHTML = Object.values(byProject).map((rs) => {
+  el.innerHTML = docs + Object.values(byProject).map((rs) => {
     const all = runs.filter((r) => r.cwd === rs[0].cwd);
     return `<div class="proj"><span>${esc(rs[0].project)}</span>${all.some((r) => !live(r))
       ? `<button class="btn danger" data-clear="${esc(rs[0].cwd)}" aria-label="Delete finished runs of ${esc(rs[0].project)}">Clear finished</button>` : ''}</div>`
@@ -511,7 +517,30 @@ function renderSummary(r) {
       <ul>${lastReview.critical.map((c) => `<li>${inlineMarkdown(c.replace(/^\s*(?:[-*]|\d+\.)\s*/, ''))}</li>`).join('')}</ul></div>` : ''}`;
 }
 
+// A project's documents (SPEC.md, ROADMAP.md): read live and rendered, so an edit by Claude shows up while you read.
+async function renderProject(pid) {
+  const p = projects.find((x) => x.id === pid);
+  if (!p) { shellFor = null; $('detail').innerHTML = '<div class="empty">This project has no SPEC.md or ROADMAP.md yet.</div>'; return; }
+  if (shellFor !== selected) {
+    shellFor = selected; projShown = '';
+    $('detail').innerHTML = `<div class="panel"><div class="tabs" role="tablist" aria-label="Project documents">
+        <button class="tab" role="tab" data-ptab="spec">SPEC.md</button><button class="tab" role="tab" data-ptab="roadmap">ROADMAP.md</button>
+        <span class="path">${esc(p.name)} · ${esc(p.cwd)}</span></div>
+      <div class="pane" style="height: calc(100vh - 190px)"><div class="md" id="projMd"></div></div></div>`;
+  }
+  document.querySelectorAll('[data-ptab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.ptab === projTab)));
+  const res = await fetch(`/api/projects/${pid}/file/${projTab}`).catch(() => null);
+  const text = res && res.ok ? await res.text() : null;
+  if (shellFor !== selected || !$('projMd')) return;
+  const sig = projTab + '\n' + text;
+  if (sig === projShown) return;                                  // unchanged: keep the reader's scroll position
+  projShown = sig;
+  $('projMd').innerHTML = text == null ? `<div class="muted-note">${DOCNAME[projTab]} has not been written yet.</div>` : renderMarkdown(text);
+}
+const DOCNAME = { spec: 'SPEC.md', roadmap: 'ROADMAP.md' };
+
 function renderDetail() {
+  if (selected?.startsWith('p:')) return renderProject(selected.slice(2));
   const r = runs.find((x) => x.id === selected);
   if (!r) { shellFor = null; $('detail').innerHTML = `<div class="empty">${runs.length ? 'Select a run.' : 'No runs yet. Start one with <code>/setup-pipeline</code>.'}</div>`; return; }
   if (shellFor !== r.id) buildShell(r);
@@ -519,7 +548,7 @@ function renderDetail() {
 }
 
 async function loadEvents() {
-  if (!shellFor) return;
+  if (!shellFor || shellFor.startsWith('p:')) return;
   const id = shellFor;
   const res = await fetch(`/api/runs/${id}/events?after=${nextEvent}`).then((x) => x.json()).catch(() => null);
   if (!res || id !== shellFor || !res.events.length) return;
@@ -537,6 +566,7 @@ function updateClocks() {
 async function tick() {
   try {
     runs = await fetch('/api/runs').then((x) => x.json());
+    projects = await fetch('/api/projects').then((x) => x.json()).catch(() => projects);
     $('dot').classList.remove('off'); $('live').textContent = 'live';
   } catch {
     $('dot').classList.add('off'); $('live').textContent = 'dashboard stopped';
@@ -544,7 +574,7 @@ async function tick() {
   }
   const running = runs.filter(live).length;
   $('counts').textContent = `${runs.length} run${runs.length === 1 ? '' : 's'}${running ? ` · ${running} running` : ''}`;
-  if (!selected && runs.length) selected = runs[0].id;
+  if (!selected) selected = runs[0]?.id || (projects[0] ? 'p:' + projects[0].id : null);
   // Each part renders on its own, and only when its data changed, so scroll positions are never reset.
   for (const part of [renderList, renderDetail, loadEvents, syncDoc]) {
     try { await part(); } catch (e) { console.error('dashboard render', e); }
@@ -586,9 +616,12 @@ document.addEventListener('click', (e) => {
   }
   const t = e.target.closest('[data-tab]');
   if (t) return showTab(t.dataset.tab);
+  const pt = e.target.closest('[data-ptab]');
+  if (pt) { projTab = pt.dataset.ptab; return renderDetail(); }
   const run = e.target.closest('.run');
   if (run) {
-    selected = run.dataset.id; history.replaceState(null, '', `#run=${selected}`);
+    selected = run.dataset.project ? 'p:' + run.dataset.project : run.dataset.id;
+    history.replaceState(null, '', run.dataset.project ? `#project=${run.dataset.project}` : `#run=${selected}`);
     renderList(); renderDetail(); loadEvents();
   }
 });

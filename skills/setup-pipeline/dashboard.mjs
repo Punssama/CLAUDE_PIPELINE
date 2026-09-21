@@ -5,9 +5,11 @@
 //   node dashboard.mjs --session-end     hook: unregister it; stop the server when none are left
 // State lives in ~/.claude-pipeline:
 //   runs/<id>.json (status) + .events.jsonl + .plan.md/.review.md/.test-output.txt (per-run snapshots) + .plan.diff
+//   projects/<id>.json (a project folder whose SPEC.md and ROADMAP.md the dashboard lists, before or without any run; see registerProject)
 //   runs/<id>.decision.json (pending decision from the browser) -> .decision.consumed.json once a session picked it up
 //   runs/<id>.waiting.json (a Claude session is waiting for that decision), sessions/, dashboard.json.
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +20,8 @@ import { lintPlan } from './planlint.mjs';
 export const HOME = process.env.CLAUDE_PIPELINE_HOME || path.join(os.homedir(), '.claude-pipeline');
 export const RUNS = path.join(HOME, 'runs');
 const SESSIONS = path.join(HOME, 'sessions');
+const PROJECTS = path.join(HOME, 'projects');
+const DOCS = { spec: 'SPEC.md', roadmap: 'ROADMAP.md' }; // the only project files the dashboard ever serves
 const INFO = path.join(HOME, 'dashboard.json');
 const LOCK = path.join(HOME, 'dashboard.lock');
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -27,11 +31,28 @@ const RECORD = /^[^.]+\.json$/;
 const SUFFIXES = ['.json', '.events.jsonl', '.plan.md', '.review.md', '.test-output.txt', '.plan.diff', '.decision.json', '.decision.consumed.json', '.waiting.json'];
 const FILES = { plan: ['plan.md', '.plan.md'], review: ['review.md', '.review.md'], 'test-output': ['test-output.txt', '.test-output.txt'] };
 const MAX_PLAN = 512 * 1024;
+// Identifies the code a server runs, so a dashboard left running by an older plugin version is replaced, not reused.
+const BUILD = crypto.createHash('sha1').update(fs.readFileSync(path.join(HERE, 'dashboard.mjs'))).update(fs.readFileSync(path.join(HERE, 'dashboard.html'))).digest('hex').slice(0, 10);
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// A project is identified by its folder. Runs record it with forward slashes and git's spelling, other callers with the OS spelling,
+// so the id hashes a normalised form (and ignores case on Windows).
+export function projectId(cwd) {
+  const p = path.resolve(cwd).replace(/\\/g, '/');
+  return crypto.createHash('sha1').update(process.platform === 'win32' ? p.toLowerCase() : p).digest('hex').slice(0, 12);
+}
+// Remember a project folder so its SPEC.md and ROADMAP.md can be read in the dashboard before any run exists (for example
+// right after /discover). Returns the project id, used in links as /#project=<id>.
+export function registerProject(cwd) {
+  const dir = path.resolve(cwd), id = projectId(dir);
+  fs.mkdirSync(PROJECTS, { recursive: true });
+  fs.writeFileSync(path.join(PROJECTS, `${id}.json`), JSON.stringify({ id, cwd: dir, name: path.basename(dir), at: new Date().toISOString() }));
+  return id;
+}
 
 // Line diff between the plan the AI wrote (plan.orig.md) and the current plan.md; null when there is nothing to compare.
 export function planDiff(dir) {
@@ -43,8 +64,8 @@ export function planDiff(dir) {
   return i < 0 ? '' : r.stdout.slice(i);
 }
 
-async function ping(port) {
-  try { return (await fetch(`http://127.0.0.1:${port}/api/ping`, { signal: AbortSignal.timeout(800) })).ok; } catch { return false; }
+async function ping(port) { // the server's { ok, pid, build }, or null when nothing answers
+  try { const r = await fetch(`http://127.0.0.1:${port}/api/ping`, { signal: AbortSignal.timeout(800) }); return r.ok ? await r.json() : null; } catch { return null; }
 }
 
 // Runner side: reuse the running dashboard or start one. Never throws; returns the URL or null.
@@ -52,7 +73,9 @@ export async function ensureDashboard() {
   try {
     fs.mkdirSync(RUNS, { recursive: true });
     const info = readJson(INFO);
-    if (info && (await ping(info.port))) return `http://127.0.0.1:${info.port}`;
+    const up = info && (await ping(info.port));
+    if (up?.build === BUILD) return `http://127.0.0.1:${info.port}`;
+    if (up) { try { process.kill(up.pid); } catch { /* already gone */ } fs.rmSync(INFO, { force: true }); } // an older version is still running: replace it
     let mine = false;
     try { fs.writeFileSync(LOCK, String(process.pid), { flag: 'wx' }); mine = true; } catch {
       // ponytail: time-based stale lock (10s); a crashed starter only delays the next one
@@ -107,6 +130,16 @@ function listRuns() {
   return runs;
 }
 
+// Registered projects plus every project that has runs; only those with a SPEC.md or ROADMAP.md on disk are listed.
+function listProjects() {
+  const byId = new Map();
+  let files = []; try { files = fs.readdirSync(PROJECTS); } catch { /* none registered yet */ }
+  for (const f of files) { const j = readJson(path.join(PROJECTS, f)); if (j?.cwd && j.id === projectId(j.cwd)) byId.set(j.id, j); }
+  for (const r of listRuns()) if (!byId.has(projectId(r.cwd))) byId.set(projectId(r.cwd), { id: projectId(r.cwd), cwd: r.cwd, name: r.project });
+  return [...byId.values()].map((p) => ({ id: p.id, name: p.name, cwd: p.cwd, docs: Object.fromEntries(Object.entries(DOCS).map(([k, f]) => [k, fs.existsSync(path.join(p.cwd, f))])) }))
+    .filter((p) => Object.values(p.docs).some(Boolean));
+}
+
 // Delete finished runs (never a running one). Returns the ids actually deleted.
 function deleteRuns(ids) {
   const byId = new Map(listRuns().map((r) => [r.id, r]));
@@ -152,7 +185,7 @@ async function serve() {
     if (write && !sameOrigin(req)) return send(res, 403, { error: 'forbidden' });
 
     if (url.pathname === '/') return send(res, 200, page, 'text/html');
-    if (url.pathname === '/api/ping') return send(res, 200, { ok: true, pid: process.pid });
+    if (url.pathname === '/api/ping') return send(res, 200, { ok: true, pid: process.pid, build: BUILD });
     if (url.pathname === '/vendor/marked.min.js') return send(res, 200, marked, 'text/javascript');
 
     if (req.method === 'DELETE') {
@@ -169,6 +202,12 @@ async function serve() {
     }
 
     if (url.pathname === '/api/runs' && !write) return send(res, 200, listRuns());
+    if (url.pathname === '/api/projects' && !write) return send(res, 200, listProjects());
+    if (p[0] === 'api' && p[1] === 'projects' && p[3] === 'file' && Object.hasOwn(DOCS, p[4] || '') && !write) { // a known project, and only its SPEC.md or ROADMAP.md
+      const proj = ID.test(p[2] || '') ? listProjects().find((x) => x.id === p[2]) : null;
+      const text = proj ? readText(path.join(proj.cwd, DOCS[p[4]]))?.slice(0, MAX_PLAN) : null;
+      return text == null ? send(res, 404, 'not written yet', 'text/plain') : send(res, 200, text, 'text/plain');
+    }
     if (p[0] !== 'api' || p[1] !== 'runs' || !ID.test(p[2] || '')) return send(res, 404, { error: 'not found' });
     const run = listRuns().find((r) => r.id === p[2]);
     if (!run) return send(res, 404, { error: 'no such run' });

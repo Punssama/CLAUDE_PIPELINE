@@ -34,6 +34,8 @@ Check, in this order:
    - *Delete it*: only after showing its commits and getting an explicit yes (`git branch -D`).
 5. **Main branch** - `main` or `master`, whichever exists. If neither, use the branch the repo was on before any `auto/...` work.
 
+**Open the dashboard early.** As soon as the project root is settled, run `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --dashboard "<root>"` and give the user its link in one line: "Read SPEC.md and ROADMAP.md here (rendered), and watch the runs: <link>". It prints `[pipeline] dashboard: http://127.0.0.1:<port>/#project=<id>`; add `&doc=roadmap` to open ROADMAP.md first. The page lists only projects that have a SPEC.md or ROADMAP.md, re-reads them every couple of seconds, and the run you start later appears in the same page. If it prints "could not start", say nothing and go on; never block on it.
+
 ## Phase 1 - Pick the mode
 | Situation | Mode |
 |---|---|
@@ -152,7 +154,7 @@ node "${CLAUDE_SKILL_DIR}/pipeline.mjs" .pipeline/config.json
 ```
 Use `run_in_background: true` (takes minutes). Do not touch the repo while it runs.
 
-**Send the dashboard link right away.** Within a few seconds the runner prints `[pipeline] dashboard: http://127.0.0.1:<port>/#run=<id>`. Read the background output until that line appears (it is among the first lines) and give the user the link in one line, e.g. "Live progress: <link>". The dashboard is one local page for the whole machine: it lists every pipeline run from every project, shows each step's state, elapsed time, real cost against the cap, the quality-gate results of every round, Critical review findings, plan.md/review.md/gate output, and a live feed of every tool call. It picks a free port itself (from 3120 up) and stays up while any Claude Code session is open. If no dashboard line appears, the run continues without it; say so and move on.
+**Send the run's dashboard link right away** (the page is already open if you gave the project link in Phase 0; this one selects the run). Within a few seconds the runner prints `[pipeline] dashboard: http://127.0.0.1:<port>/#run=<id>`. Read the background output until that line appears (it is among the first lines) and give the user the link in one line, e.g. "Live progress: <link>". The dashboard is one local page for the whole machine: it lists every pipeline run from every project, shows each step's state, elapsed time, real cost against the cap, the quality-gate results of every round, Critical review findings, plan.md/review.md/gate output, and a live feed of every tool call. It picks a free port itself (from 3120 up) and stays up while any Claude Code session is open. If no dashboard line appears, the run continues without it; say so and move on.
 
 Then wait for the completion notification and read the rest of the output.
 

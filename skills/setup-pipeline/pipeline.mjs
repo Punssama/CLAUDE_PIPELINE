@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Plan (Opus) -> Build (Sonnet) -> [quality gates -> Review (Sonnet, read-only)] x N -> Commit+push (Haiku, no edit).
-// Usage: node pipeline.mjs .pipeline/config.json [--from plan|build|review|commit]   |   node pipeline.mjs --dashboard
+// Usage: node pipeline.mjs .pipeline/config.json [--from plan|build|review|commit]   |   node pipeline.mjs --dashboard [project folder]
 // Exit: 0 done | 10 paused after plan | 1 error | 2 gates or review still failing (nothing committed) | 3 plan not ready (plan lint errors)
 // Milestone mode (cfg.milestone = 'M2'): reads SPEC.md + ROADMAP.md at the repo root and holds the plan and the tests to the milestone's AC IDs.
 // Quality tier (cfg.tier, see tiers.json): fills models, effort, budgets, fix loops, gates, plan research and check depth; the config wins.
@@ -11,15 +11,17 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureDashboard, planDiff, RUNS } from './dashboard.mjs';
+import { ensureDashboard, planDiff, registerProject, RUNS } from './dashboard.mjs';
 import { lintPlan, formatIssues } from './planlint.mjs';
 import { planGates, gateIds, runGates, blockingFailed, summarize, formatReport } from './gates.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-if (process.argv[2] === '--dashboard') { // just start/find the dashboard and print its link
+if (process.argv[2] === '--dashboard') { // start/find the dashboard and print its link; with a project folder, the link opens its SPEC.md and ROADMAP.md
   const u = await ensureDashboard();
-  console.log(u ? `[pipeline] dashboard: ${u}` : '[pipeline] dashboard could not start');
+  const id = u && process.argv[3] ? registerProject(process.argv[3]) : null;
+  console.log(u ? `[pipeline] dashboard: ${u}${id ? `/#project=${id}` : ''}` : '[pipeline] dashboard could not start');
+  await new Promise((r) => setTimeout(r, 300)); // let the probe's connection finish closing: exiting mid-close crashes Node on Windows (exit 127)
   process.exit(u ? 0 : 1);
 }
 

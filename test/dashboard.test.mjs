@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SERVER = path.join(fileURLToPath(new URL('..', import.meta.url)), 'skills', 'setup-pipeline', 'dashboard.mjs');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-home-'));
@@ -76,4 +76,62 @@ test('lint and save refuse other origins and oversized bodies', async () => {
   const big = await api(`/api/runs/${ID}/lint`, { method: 'POST', body: 'x'.repeat(600 * 1024) });
   assert.equal(big.status, 413);
   assert.equal((await api('/api/runs/nope/lint', { method: 'POST', body: GOOD })).status, 404);
+});
+
+// ---- project documents: SPEC.md and ROADMAP.md, readable before any run exists -----------------------
+const registry = async () => { process.env.CLAUDE_PIPELINE_HOME = home; return import(pathToFileURL(SERVER).href); }; // HOME is read when the module loads
+const tmpProject = (files) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-spec-'));
+  for (const [f, c] of Object.entries(files)) fs.writeFileSync(path.join(d, f), c);
+  return d;
+};
+
+test('a registered project lists its SPEC.md and ROADMAP.md before any run exists, and follows edits', async () => {
+  const { registerProject, projectId } = await registry();
+  const dir = tmpProject({ 'SPEC.md': '# Spec\n- **AC-1** works\n' });
+  const id = registerProject(dir);
+  assert.equal(id, projectId(dir + path.sep));                                      // how the path is spelled does not change the id
+  const mine = (await (await api('/api/projects')).json()).find((x) => x.id === id);
+  assert.deepEqual(mine.docs, { spec: true, roadmap: false });
+  assert.match(await (await api(`/api/projects/${id}/file/spec`)).text(), /AC-1/);
+  assert.equal((await api(`/api/projects/${id}/file/roadmap`)).status, 404);        // not written yet
+  fs.writeFileSync(path.join(dir, 'ROADMAP.md'), '# Roadmap\n## [ ] M1 - first\n');
+  assert.match(await (await api(`/api/projects/${id}/file/roadmap`)).text(), /M1/); // read live: no re-registration needed
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('only SPEC.md and ROADMAP.md of known projects are served, and folders without them are not listed', async () => {
+  const { registerProject } = await registry();
+  const dir = tmpProject({ 'SPEC.md': '# Spec\n', 'secret.txt': 'nope' });
+  const id = registerProject(dir);
+  const bare = registerProject(tmpProject({ 'notes.txt': 'x' }));
+  const list = await (await api('/api/projects')).json();
+  assert.ok(list.some((x) => x.id === id));
+  assert.ok(!list.some((x) => x.id === bare), 'a folder with neither document is not a project to show');
+  assert.ok(!list.some((x) => x.cwd === proj), 'a run-only folder without SPEC.md or ROADMAP.md is not listed either');
+  for (const bad of [`/api/projects/${id}/file/secret.txt`, `/api/projects/${id}/file/constructor`, `/api/projects/${id}/file/..%2Fsecret.txt`, '/api/projects/0123456789ab/file/spec', '/api/projects/..%2F..%2Fx/file/spec'])
+    assert.equal((await api(bad)).status, 404, bad);
+  assert.equal((await api(`/api/projects/${id}/file/spec`, { method: 'PUT', body: 'x' })).status, 404);  // read-only: nothing here writes project files
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a dashboard left running by an older version is replaced, and a current one is reused', async () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-old-'));
+  // a stand-in for the old version: it answers /api/ping without a build, from a process of its own (the runner kills it by pid)
+  const old = spawn(process.execPath, ['-e', "const s=require('http').createServer((q,r)=>r.end(JSON.stringify({ok:true,pid:process.pid})));s.listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const port = await new Promise((res) => old.stdout.once('data', (d) => res(Number(String(d).trim()))));
+  fs.writeFileSync(path.join(h, 'dashboard.json'), JSON.stringify({ port, pid: old.pid }));
+  const env = { ...process.env, CLAUDE_PIPELINE_HOME: h };
+  const ensure = () => spawnSync(process.execPath, [path.join(path.dirname(SERVER), 'pipeline.mjs'), '--dashboard'], { env, encoding: 'utf8', timeout: 30000 });
+  const current = () => JSON.parse(fs.readFileSync(path.join(h, 'dashboard.json'), 'utf8'));
+  try {
+    const first = ensure();
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    const info = current();
+    assert.notEqual(info.pid, old.pid, 'the old server was replaced');
+    assert.match((await (await fetch(`http://127.0.0.1:${info.port}/api/ping`)).json()).build, /^[0-9a-f]{10}$/);
+    assert.equal(ensure().status, 0);
+    assert.equal(current().pid, info.pid, 'a server of the current version is reused, not restarted');
+    try { process.kill(info.pid); } catch { /* already gone */ }
+  } finally { old.kill(); fs.rmSync(h, { recursive: true, force: true }); }
 });

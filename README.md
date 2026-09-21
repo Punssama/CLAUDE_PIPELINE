@@ -217,7 +217,7 @@ node <plugin>/skills/setup-pipeline/pipeline.mjs .pipeline/config.json --undo
 
 ### Live dashboard
 
-When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`. One local page shows **every pipeline run on the machine**, across all your projects:
+When a run starts, Claude sends you a link like `http://127.0.0.1:3120/#run=...`. You get a link earlier too: `/discover` gives it with the summary of what it wrote, and `/setup-pipeline` right after it finds your project, so you can **read `SPEC.md` and `ROADMAP.md` rendered as Markdown before anything is built** (`#project=<id>`; the **Documents** list in the sidebar; the page re-reads the files every couple of seconds, so edits show up while you read). One local page shows **every pipeline run on the machine**, across all your projects:
 
 - step progress (Plan → Build → Gates → Review → Commit), elapsed time and fix-loop round
 - **real cost** per step and in total, against the budget cap
