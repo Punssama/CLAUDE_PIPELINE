@@ -2,6 +2,7 @@
 // One pipeline dashboard per machine, shared by every project and Claude session.
 //   node dashboard.mjs --serve           start the server (spawned by ensureDashboard)
 //   node dashboard.mjs --session-start   hook: register a Claude session (JSON on stdin)
+//   node dashboard.mjs --docs-hook       hook (PostToolUse on Write/Edit): SPEC.md or ROADMAP.md was written -> show it in the dashboard, and give the user the link
 //   node dashboard.mjs --session-end     hook: unregister it; stop the server when none are left
 // State lives in ~/.claude-pipeline:
 //   runs/<id>.json (status) + .events.jsonl + .plan.md/.review.md/.test-output.txt (per-run snapshots) + .plan.diff
@@ -136,7 +137,7 @@ function listProjects() {
   let files = []; try { files = fs.readdirSync(PROJECTS); } catch { /* none registered yet */ }
   for (const f of files) { const j = readJson(path.join(PROJECTS, f)); if (j?.cwd && j.id === projectId(j.cwd)) byId.set(j.id, j); }
   for (const r of listRuns()) if (!byId.has(projectId(r.cwd))) byId.set(projectId(r.cwd), { id: projectId(r.cwd), cwd: r.cwd, name: r.project });
-  return [...byId.values()].map((p) => ({ id: p.id, name: p.name, cwd: p.cwd, docs: Object.fromEntries(Object.entries(DOCS).map(([k, f]) => [k, fs.existsSync(path.join(p.cwd, f))])) }))
+  return [...byId.values()].map((p) => ({ id: p.id, name: p.name, cwd: p.cwd, at: p.at, docs: Object.fromEntries(Object.entries(DOCS).map(([k, f]) => [k, fs.existsSync(path.join(p.cwd, f))])) }))
     .filter((p) => Object.values(p.docs).some(Boolean));
 }
 
@@ -286,6 +287,24 @@ function stopServer() {
   fs.rmSync(INFO, { force: true });
 }
 
+// PostToolUse hook: whenever SPEC.md or ROADMAP.md is written (by /discover, /setup-pipeline, /toolkit or by hand), register its folder so an
+// open dashboard shows it live, and once both files exist tell the user the link: once per project, dashboard and session. This is a hook, not
+// a line in a skill, so it does not depend on the model remembering to do it.
+async function docsHook() {
+  const e = readStdin(), f = e.tool_input?.file_path;
+  if (process.env.CLAUDE_PIPELINE_HEADLESS || !f || !/^(SPEC|ROADMAP)\.md$/.test(path.basename(f))) return;
+  const dir = path.dirname(path.resolve(f)), id = registerProject(dir);
+  const url = await ensureDashboard();
+  if (!url || !Object.values(DOCS).every((d) => fs.existsSync(path.join(dir, d)))) return;
+  const file = path.join(HOME, 'announced.json'), key = `${id}:${e.session_id || ''}`, seen = readJson(file) || {};
+  if (seen[key] === url) return;
+  // ponytail: keeps the last 50 announcements; older ones simply get announced again
+  fs.writeFileSync(file, JSON.stringify(Object.fromEntries([...Object.entries(seen), [key, url]].slice(-50))));
+  const link = `${url}/#project=${id}`;
+  console.log(JSON.stringify({ systemMessage: `SPEC.md and ROADMAP.md are ready. Read them rendered (they update live): ${link}`,
+    hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: `The pipeline dashboard now shows SPEC.md and ROADMAP.md and updates live: ${link}. Give the user this link in one line.` } }));
+}
+
 function readStdin() {
   try { return JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { return {}; }
 }
@@ -296,6 +315,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   else if (cmd === '--launch') {
     spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   }
+  else if (cmd === '--docs-hook') { try { await docsHook(); } catch { /* a hook must never fail */ } }
   else if (cmd === '--session-start' || cmd === '--session-end') {
     // Hooks must never fail or print: Claude Code would surface it.
     try {

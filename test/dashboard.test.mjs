@@ -135,3 +135,43 @@ test('a dashboard left running by an older version is replaced, and a current on
     try { process.kill(info.pid); } catch { /* already gone */ }
   } finally { old.kill(); fs.rmSync(h, { recursive: true, force: true }); }
 });
+
+test('the docs hook shows SPEC.md and ROADMAP.md in the dashboard and gives the link once both exist, once per session', async () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-hook-'));
+  const dir = tmpProject({ 'SPEC.md': '# Spec\n', 'README.md': '# Readme\n' });
+  const hook = (file, { sid = 's1', env = {} } = {}) => spawnSync(process.execPath, [SERVER, '--docs-hook'],
+    { env: { ...process.env, CLAUDE_PIPELINE_HOME: h, ...env }, input: JSON.stringify({ session_id: sid, tool_name: 'Write', tool_input: { file_path: file } }), encoding: 'utf8', timeout: 30000 });
+  const registered = () => { try { return fs.readdirSync(path.join(h, 'projects')).length; } catch { return 0; } };
+  try {
+    let r = hook(path.join(dir, 'SPEC.md'));
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), '', 'only one of the two documents exists: no link yet');
+    assert.equal(registered(), 1, 'but the folder is registered, so an open dashboard already lists SPEC.md');
+
+    hook(path.join(dir, 'README.md'), { sid: 's9' });
+    assert.equal(registered(), 1, 'other files are ignored');
+
+    fs.writeFileSync(path.join(dir, 'ROADMAP.md'), '# Roadmap\n');
+    r = hook(path.join(dir, 'ROADMAP.md'));
+    const out = JSON.parse(r.stdout);
+    assert.match(out.systemMessage, /http:\/\/127\.0\.0\.1:\d+\/#project=[0-9a-f]{12}/);
+    assert.match(out.hookSpecificOutput.additionalContext, /#project=/);
+    assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUse');
+
+    assert.equal(hook(path.join(dir, 'SPEC.md')).stdout.trim(), '', 'the same session is not told twice');
+    assert.match(hook(path.join(dir, 'SPEC.md'), { sid: 's2' }).stdout, /#project=/); // a new session is
+
+    const info = JSON.parse(fs.readFileSync(path.join(h, 'dashboard.json'), 'utf8'));
+    const list = await (await fetch(`http://127.0.0.1:${info.port}/api/projects`)).json();
+    assert.deepEqual(list.map((p) => p.docs), [{ spec: true, roadmap: true }]);
+    assert.ok(list[0].at, 'a registered project carries when it was last written, so an open page can jump to it');
+
+    const other = tmpProject({ 'SPEC.md': '# x\n', 'ROADMAP.md': '# y\n' });
+    assert.equal(hook(path.join(other, 'SPEC.md'), { env: { CLAUDE_PIPELINE_HEADLESS: '1' } }).stdout.trim(), '', 'pipeline steps never announce');
+    assert.equal(registered(), 1);
+    fs.rmSync(other, { recursive: true, force: true });
+  } finally {
+    try { process.kill(JSON.parse(fs.readFileSync(path.join(h, 'dashboard.json'), 'utf8')).pid); } catch { /* not started */ }
+    fs.rmSync(h, { recursive: true, force: true }); fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

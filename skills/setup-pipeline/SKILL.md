@@ -34,7 +34,7 @@ Check, in this order:
    - *Delete it*: only after showing its commits and getting an explicit yes (`git branch -D`).
 5. **Main branch** - `main` or `master`, whichever exists. If neither, use the branch the repo was on before any `auto/...` work.
 
-**Open the dashboard early.** As soon as the project root is settled, run `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --dashboard "<root>"` and give the user its link in one line: "Read SPEC.md and ROADMAP.md here (rendered), and watch the runs: <link>". It prints `[pipeline] dashboard: http://127.0.0.1:<port>/#project=<id>`; add `&doc=roadmap` to open ROADMAP.md first. The page lists only projects that have a SPEC.md or ROADMAP.md, re-reads them every couple of seconds, and the run you start later appears in the same page. If it prints "could not start", say nothing and go on; never block on it.
+**Open the dashboard early.** The plugin's hook already gives the user the link by itself whenever SPEC.md and ROADMAP.md are written (a notice "SPEC.md and ROADMAP.md are ready ... <link>"). If the project already has both and you have not shown a link in this session, then, as soon as the project root is settled, run `node "${CLAUDE_SKILL_DIR}/pipeline.mjs" --dashboard "<root>"` and give the user its link in one line: "Read SPEC.md and ROADMAP.md here (rendered), and watch the runs: <link>". It prints `[pipeline] dashboard: http://127.0.0.1:<port>/#project=<id>`; add `&doc=roadmap` to open ROADMAP.md first. The page lists only projects that have a SPEC.md or ROADMAP.md, re-reads them every couple of seconds, and the run you start later appears in the same page. If it prints "could not start", say nothing and go on; never block on it.
 
 ## Phase 1 - Pick the mode
 | Situation | Mode |

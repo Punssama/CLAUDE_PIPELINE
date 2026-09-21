@@ -343,6 +343,7 @@ let runs = [], projects = [], filter = 'all';
 const hashOf = (re) => (location.hash.match(re) || [])[1];
 // selected is a run id, or 'p:<id>' for a project's SPEC.md / ROADMAP.md (link: #project=<id>)
 let selected = hashOf(/run=([\w.-]+)/) || (hashOf(/project=(\w+)/) ? 'p:' + hashOf(/project=(\w+)/) : null);
+let projSeen = null; // project id -> time it was last registered (null until the first poll)
 let projTab = selected?.startsWith('p:') && hashOf(/doc=(spec|roadmap)/) || 'spec', projShown = ''; // #project=<id>&doc=roadmap opens that document
 let listSig = '', summarySig = '', shellFor = null, nextEvent = 0, follow = true, tab = 'activity';
 const hashParams = new URLSearchParams(location.hash.slice(1));
@@ -567,6 +568,10 @@ async function tick() {
   try {
     runs = await fetch('/api/runs').then((x) => x.json());
     projects = await fetch('/api/projects').then((x) => x.json()).catch(() => projects);
+    // A project whose documents were just written (registered again) is shown right away, unless a plan review is open or the selected run is running.
+    const hot = projSeen && projects.find((p) => p.at && projSeen[p.id] !== p.at);
+    if (hot && !$('doc').open && runs.find((r) => r.id === selected)?.state !== 'running') { selected = 'p:' + hot.id; history.replaceState(null, '', `#project=${hot.id}`); }
+    projSeen = Object.fromEntries(projects.map((p) => [p.id, p.at]));
     $('dot').classList.remove('off'); $('live').textContent = 'live';
   } catch {
     $('dot').classList.add('off'); $('live').textContent = 'dashboard stopped';

@@ -1,11 +1,14 @@
 {
-  "description": "Keeps the pipeline dashboard alive while any Claude Code session is open (stops it when the last one closes) and shows a one-time hint about /toolkit.",
+  "description": "Keeps the pipeline dashboard alive while any Claude Code session is open (stops it when the last one closes), shows a one-time hint about /toolkit, and gives you the dashboard link as soon as SPEC.md and ROADMAP.md are written.",
   "hooks": {
     "SessionStart": [
       { "hooks": [
         { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/setup-pipeline/dashboard.mjs\" --session-start", "timeout": 10 },
         { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/toolkit/toolkit.mjs\" --nudge", "timeout": 10 }
       ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write|Edit|MultiEdit", "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/setup-pipeline/dashboard.mjs\" --docs-hook", "timeout": 20 } ] }
     ],
     "SessionEnd": [
       { "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/setup-pipeline/dashboard.mjs\" --session-end", "timeout": 10 } ] }
